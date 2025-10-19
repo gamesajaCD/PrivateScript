@@ -158,7 +158,7 @@ local zoneList = getZoneList()
 local selectedZone = zoneList[1] or "1"
 
 -- Dropdown untuk Zone
-local ZoneDropdown = MainTab:CreateDropdown({
+local TreeZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone",
     Options = zoneList,
     CurrentOption = selectedZone,
@@ -349,13 +349,13 @@ local function getZoneData()
     end
     return zoneList, nameToId
 end
-local zoneList, zoneNameToId = getZoneData()
-local selectedZoneName = zoneList[1] or "1"
+local fishZoneList, zoneNameToId = getZoneData()
+local selectedZoneName = fishZoneList[1] or "1"
 local selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName) or 1
 -- Dropdown untuk Zone
 local FishZoneDropdown = FishSection:CreateDropdown({
     Name = "Select Zone",
-    Options = zoneList,
+    Options = fishZoneList,
     CurrentOption = selectedZoneName,
     Flag = "ZoneDropdownFish",
     Callback = function(Option)
