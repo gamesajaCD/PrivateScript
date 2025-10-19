@@ -528,7 +528,7 @@ local AutoFishToggle = MainTab:CreateToggle({
                             castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
                         end)
                     end
-                    task.wait(0.8) -- interval cast; sesuaikan agar tidak kena rate limit
+                    task.wait(5) -- interval cast; sesuaikan agar tidak kena rate limit
                 end
             end)
         else
@@ -623,7 +623,7 @@ local InstantCatchFishToggle = MainTab:CreateToggle({
                     pcall(function()
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.CatchSequenceFinish:InvokeServer(ohBoolean1, ohBoolean2)
                     end)
-                    wait(5)
+                    wait(0.1)
                 end
             end)
         else
