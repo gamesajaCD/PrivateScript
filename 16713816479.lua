@@ -366,7 +366,7 @@ local autoFishThread = nil
 
 -- Toggle untuk Auto Fish
 local AutoFishToggle = MainTab:CreateToggle({
-    Name = "Auto Fisha",
+    Name = "Auto Fishzx",
     CurrentValue = false,
     Flag = "AutoFishToggle",
     Callback = function(Value)
@@ -379,14 +379,36 @@ local AutoFishToggle = MainTab:CreateToggle({
             })
             autoFishThread = spawn(function()
                 local replicatedStorage = game:GetService("ReplicatedStorage")
+                local workspace = game:GetService("Workspace")
+                local fishFolder = replicatedStorage.Assets:FindFirstChild("Fish")
+                local fishPartsFolder = workspace.Scripted:FindFirstChild("FishParts")
                 local castFishingRod = replicatedStorage.Packages.Knit.Services.FarmingService.RF.CastFishingRod
                 
                 while AutoFishEnabled do
                     local zoneId = tonumber(selectedZone) -- Convert selectedZone to number for ZoneId
-                    local fishFolder = replicatedStorage.Assets:FindFirstChild("Fish")
                     local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
                     
-                    if zoneFolder then
+                    if zoneFolder and fishPartsFolder then
+                        local fishNames = {}
+                        for _, fish in ipairs(zoneFolder:GetChildren()) do
+                            table.insert(fishNames, fish.Name)
+                        end
+                        
+                        -- Cek fish parts sebelum cast
+                        local foundFish = false
+                        for _, part in ipairs(fishPartsFolder:GetChildren()) do
+                            local fishName = part:GetAttribute("FishName")
+                            local partZoneId = part:GetAttribute("ZoneId")
+                            if fishName and partZoneId and table.find(fishNames, fishName) and partZoneId == zoneId then
+                                foundFish = true
+                                Rayfield:Notify({
+                                    Title = "Fish Detected",
+                                    Content = "Found " .. fishName .. " in zone " .. selectedZone,
+                                    Duration = 3
+                                })
+                            end
+                        end
+                        
                         -- Panggil CastFishingRod dengan semua parameter
                         pcall(function()
                             local ohNumber1 = 0.9900000000000007
@@ -399,17 +421,46 @@ local AutoFishToggle = MainTab:CreateToggle({
                             castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
                             Rayfield:Notify({
                                 Title = "Auto Fish",
-                                Content = "Casting fishing rod in zone " .. selectedZone,
+                                Content = "Casting fishing rod in zone " .. selectedZone .. " with ZoneId " .. zoneId,
                                 Duration = 3
                             })
                         end)
                         
-                        -- Tunggu 5 detik untuk memungkinkan fish diproses oleh game
+                        -- Tunggu 5 detik untuk memungkinkan fish diproses
                         wait(5)
+                        
+                        -- Cek lagi fish parts setelah cast untuk verifikasi perpindahan
+                        local stillPresent = false
+                        for _, part in ipairs(fishPartsFolder:GetChildren()) do
+                            local fishName = part:GetAttribute("FishName")
+                            local partZoneId = part:GetAttribute("ZoneId")
+                            if fishName and partZoneId and table.find(fishNames, fishName) and partZoneId == zoneId then
+                                stillPresent = true
+                                Rayfield:Notify({
+                                    Title = "Fish Status",
+                                    Content = fishName .. " still in FishParts after cast",
+                                    Duration = 3
+                                })
+                            end
+                        end
+                        
+                        if not stillPresent and foundFish then
+                            Rayfield:Notify({
+                                Title = "Fish Moved",
+                                Content = "Fish in zone " .. selectedZone .. " successfully processed",
+                                Duration = 3
+                            })
+                        elseif not foundFish then
+                            Rayfield:Notify({
+                                Title = "Auto Fish Warning",
+                                Content = "No fish found in FishParts for zone " .. selectedZone,
+                                Duration = 5
+                            })
+                        end
                     else
                         Rayfield:Notify({
                             Title = "Auto Fish Warning",
-                            Content = "No zone folder found for " .. selectedZone,
+                            Content = "No zone folder or FishParts found for zone " .. selectedZone,
                             Duration = 5
                         })
                     end
