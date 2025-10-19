@@ -51,7 +51,7 @@ local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
 -- Fungsi untuk mendapatkan list zones (Tree/Stone)
 local function getZoneList()
     local zoneList = {}
-    local zonesFolder = workspace.__WORLD.MAP:FindFirstChild("Zones")
+    local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
     if zonesFolder then
         for _, zone in ipairs(zonesFolder:GetChildren()) do
             table.insert(zoneList, zone.Name)
@@ -98,10 +98,10 @@ local AutoTreeToggle = MainTab:CreateToggle({
             })
             autoTreeThread = task.spawn(function()
                 local player = game:GetService("Players").LocalPlayer
-                local zonesFolder = workspace.__WORLD.MAP:FindFirstChild("Zones")
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
                 while AutoTreeEnabled do
                     local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(selectedZone)
-                    local breakableTreesFolder = zoneFolder and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
+                    local breakableTreesFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
                     if breakableTreesFolder then
                         for _, tree in ipairs(breakableTreesFolder:GetChildren()) do
                             if not AutoTreeEnabled then break end
@@ -170,11 +170,11 @@ local AutoMiningToggle = MainTab:CreateToggle({
             })
             autoMiningThread = task.spawn(function()
                 local player = game:GetService("Players").LocalPlayer
-                local zonesFolder = workspace.__WORLD.MAP:FindFirstChild("Zones")
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
                 local DamageOre = game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.DamageOre
                 while AutoMiningEnabled do
                     local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(selectedZone)
-                    local breakableOresFolder = zoneFolder and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
+                    local breakableOresFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
                     if breakableOresFolder then
                         for _, ore in ipairs(breakableOresFolder:GetChildren()) do
                             if not AutoMiningEnabled then break end
@@ -227,7 +227,9 @@ local AutoMiningToggle = MainTab:CreateToggle({
 -- Membuat section Fish
 local FishSection = MainTab:CreateSection("Fish Features")
 
--- Utils (Fish)
+-- Utils & Helper (Fish) - didefinisikan SEBELUM dropdown agar tidak nil saat callback
+local RS = game:GetService("ReplicatedStorage")
+
 local function parseZoneIdFromName(name)
     if typeof(name) ~= "string" then return nil end
     local numStr = name:match("%d+")
@@ -235,10 +237,9 @@ local function parseZoneIdFromName(name)
     return tonumber(name)
 end
 
-local function getZoneData()
+local function getFishZoneData()
     local list = {}
     local nameToId = {}
-    local RS = game:GetService("ReplicatedStorage")
     local assets = RS:FindFirstChild("Assets")
     local fishFolder = assets and assets:FindFirstChild("Fish")
     if fishFolder then
@@ -252,54 +253,19 @@ local function getZoneData()
     return list, nameToId
 end
 
-local fishZoneList, zoneNameToId = getZoneData()
-local selectedZoneName = fishZoneList[1] or "1"
-local selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName) or 1
-
--- Dropdown untuk Zone (Fish)
-local ZoneDropdownFish = MainTab:CreateDropdown({
-    Name = "Select Zone (Fish)",
-    Options = fishZoneList,
-    CurrentOption = selectedZoneName,
-    Flag = "ZoneDropdownFish",
-    Callback = function(Option)
-        selectedZoneName = (typeof(Option) == "table") and Option[1] or Option
-        selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName) or 1
-        -- REFRESH daftar ikan yang valid tiap zone berubah
-        task.spawn(function()
-            task.wait() -- kecil biar aman di thread UI
-            local ok, err = pcall(function()
-                local _ = selectedZoneId -- placeholder
-            end)
-            -- panggil refreshAllowedFishNames di luar error
-        end)
-        refreshAllowedFishNames()
-        Rayfield:Notify({
-            Title = "Zone Selected",
-            Content = ("Selected Zone: %s (Id: %s)"):format(tostring(selectedZoneName), tostring(selectedZoneId)),
-            Duration = 4
-        })
-    end
-})
-
--- Variabel & helper (Fish)
-local AutoFishEnabled = false
-local autoFishThread = nil
-
-local function getZoneFolderBySelection()
-    local RS = game:GetService("ReplicatedStorage")
+local function getFishZoneFolderBySelection(selectedName, selectedId)
     local assets = RS:FindFirstChild("Assets")
     local fishFolder = assets and assets:FindFirstChild("Fish")
     if not fishFolder then return nil end
-    if selectedZoneName then
-        local z = fishFolder:FindFirstChild(selectedZoneName)
+    if selectedName then
+        local z = fishFolder:FindFirstChild(selectedName)
         if z then return z end
     end
-    if selectedZoneId then
+    if selectedId then
         for _, z in ipairs(fishFolder:GetChildren()) do
             if z.Name ~= "NOT USED" then
                 local zid = z:GetAttribute("ZoneId") or parseZoneIdFromName(z.Name)
-                if zid == selectedZoneId then
+                if zid == selectedId then
                     return z
                 end
             end
@@ -309,16 +275,52 @@ local function getZoneFolderBySelection()
 end
 
 local allowedFishNamesSet = {}
-local function refreshAllowedFishNames()
-    table.clear(allowedFishNamesSet)
-    local zoneFolder = getZoneFolderBySelection()
+local function refreshAllowedFishNames(selectedName, selectedId)
+    -- clear manual (hindari table.clear tidak tersedia di beberapa executor)
+    for k in pairs(allowedFishNamesSet) do
+        allowedFishNamesSet[k] = nil
+    end
+    local zoneFolder = getFishZoneFolderBySelection(selectedName, selectedId)
     if not zoneFolder then return end
     for _, fish in ipairs(zoneFolder:GetChildren()) do
         allowedFishNamesSet[fish.Name] = true
     end
 end
 
--- Param lempar kail
+-- Data awal Fish Zones
+local fishZoneList, fishZoneNameToId = getFishZoneData()
+if #fishZoneList == 0 then
+    fishZoneList = {"1"}
+    fishZoneNameToId = { ["1"] = 1 }
+end
+local selectedFishZoneName = fishZoneList[1]
+local selectedFishZoneId = fishZoneNameToId[selectedFishZoneName] or parseZoneIdFromName(selectedFishZoneName) or 1
+refreshAllowedFishNames(selectedFishZoneName, selectedFishZoneId)
+
+-- Dropdown untuk Zone (Fish)
+local FishZoneDropdown = MainTab:CreateDropdown({
+    Name = "Select Zone (Fish)",
+    Options = fishZoneList,
+    CurrentOption = selectedFishZoneName,
+    Flag = "ZoneDropdownFish",
+    Callback = function(Option)
+        selectedFishZoneName = (typeof(Option) == "table") and Option[1] or Option
+        selectedFishZoneId = fishZoneNameToId[selectedFishZoneName] or parseZoneIdFromName(selectedFishZoneName) or 1
+        -- Refresh daftar ikan valid (aman: function sudah terdefinisi)
+        refreshAllowedFishNames(selectedFishZoneName, selectedFishZoneId)
+        Rayfield:Notify({
+            Title = "Zone Selected (Fish)",
+            Content = ("Selected Zone: %s (Id: %s)"):format(tostring(selectedFishZoneName), tostring(selectedFishZoneId)),
+            Duration = 4
+        })
+    end
+})
+
+-- Variabel untuk Auto Fish
+local AutoFishEnabled = false
+local autoFishThread = nil
+
+-- Param lempar kail (biarkan default)
 local ohNumber1 = 0.9900000000000007
 local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
 local ohVector33 = Vector3.new(-4069.359130859375, -4.571030139923096, -8.79765510559082)
@@ -326,7 +328,7 @@ local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.94023132
 local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
 local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, 0, 0.981970191, 0, 1, 0, -0.981970191, 0, 0.189035907)
 
--- Toggle untuk Auto Fish
+-- Toggle untuk Auto Fish (hanya CastFishingRod, tanpa teleport fish)
 local AutoFishToggle = MainTab:CreateToggle({
     Name = "Auto Fish",
     CurrentValue = false,
@@ -336,137 +338,38 @@ local AutoFishToggle = MainTab:CreateToggle({
         if Value then
             Rayfield:Notify({
                 Title = "Auto Fish Enabled",
-                Content = "Mulai auto fishing di zone " .. tostring(selectedZoneName) .. " (Id: " .. tostring(selectedZoneId) .. ")",
+                Content = "Mulai auto fishing di zone " .. tostring(selectedFishZoneName) .. " (Id: " .. tostring(selectedFishZoneId) .. ")",
                 Duration = 4
             })
             autoFishThread = task.spawn(function()
-                local Players = game:GetService("Players")
-                local LocalPlayer = Players.LocalPlayer
-                local RS = game:GetService("ReplicatedStorage")
-                local WS = game:GetService("Workspace")
-                local fishPartsFolder = WS:FindFirstChild("Scripted") and WS.Scripted:FindFirstChild("FishParts")
                 local castFishingRod = RS.Packages
                     and RS.Packages.Knit
                     and RS.Packages.Knit.Services
                     and RS.Packages.Knit.Services.FarmingService
                     and RS.Packages.Knit.Services.FarmingService.RF
                     and RS.Packages.Knit.Services.FarmingService.RF.CastFishingRod
-                if not fishPartsFolder or not castFishingRod then
+
+                if not castFishingRod then
                     Rayfield:Notify({
                         Title = "Auto Fish Warning",
-                        Content = "FishParts atau remote CastFishingRod tidak ditemukan.",
+                        Content = "Remote CastFishingRod tidak ditemukan.",
                         Duration = 5
                     })
                     return
                 end
-                refreshAllowedFishNames()
+
                 while AutoFishEnabled do
-                    local zoneFolder = getZoneFolderBySelection()
-                    if zoneFolder and selectedZoneId then
-                        pcall(function()
-                            local ohNumber7 = selectedZoneId
-                            castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                        end)
-                        task.wait(5)
-                        for _, part in ipairs(fishPartsFolder:GetChildren()) do
-                            if not AutoFishEnabled then break end
-                            local fishName = part:GetAttribute("FishName")
-                            local partZoneId = part:GetAttribute("ZoneId")
-                            if fishName and partZoneId and allowedFishNamesSet[fishName] and partZoneId == selectedZoneId then
-                                pcall(function()
-                                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                                        local root = LocalPlayer.Character.HumanoidRootPart
-                                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5)
-                                        part.CFrame = targetCFrame
-                                    end
-                                end)
-                                pcall(function()
-                                    local ohNumber7 = selectedZoneId
-                                    castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                                end)
-                                task.wait(0.1)
-                            end
-                        end
-                    else
-                        Rayfield:Notify({
-                            Title = "Auto Fish Warning",
-                            Content = "No zone folder found for " .. tostring(selectedZoneName),
-                            Duration = 5
-                        })
-                    end
-                    task.wait(1)
+                    pcall(function()
+                        local ohNumber7 = selectedFishZoneId
+                        castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
+                    end)
+                    task.wait(3) -- jeda biar tidak terlalu spam
                 end
             end)
         else
             Rayfield:Notify({
                 Title = "Auto Fish Disabled",
                 Content = "Auto Fish dihentikan",
-                Duration = 4
-            })
-        end
-    end
-})
-
--- Toggle untuk Uji Teleport Fish Spesifik
-local TestTeleportEnabled = false
-local TestTeleportToggle = MainTab:CreateToggle({
-    Name = "Test Teleport Fish",
-    CurrentValue = false,
-    Flag = "TestTeleportToggle",
-    Callback = function(Value)
-        TestTeleportEnabled = Value
-        if Value then
-            Rayfield:Notify({
-                Title = "Test Teleport Enabled",
-                Content = "Mencoba teleport fish spesifik",
-                Duration = 4
-            })
-            task.spawn(function()
-                local Players = game:GetService("Players")
-                local LocalPlayer = Players.LocalPlayer
-                local WS = game:GetService("Workspace")
-                local fishPartsFolder = WS:FindFirstChild("Scripted") and WS.Scripted:FindFirstChild("FishParts")
-                if not fishPartsFolder then
-                    Rayfield:Notify({
-                        Title = "Test Teleport Warning",
-                        Content = "FishParts folder tidak ditemukan.",
-                        Duration = 5
-                    })
-                    return
-                end
-                local specificFishName = "03617b563bc44f7ea4a6ef51fb2ef45b"
-                local fishPart = fishPartsFolder:FindFirstChild(specificFishName)
-                if not fishPart then
-                    Rayfield:Notify({
-                        Title = "Test Teleport Warning",
-                        Content = "Fish part dengan nama " .. specificFishName .. " tidak ditemukan.",
-                        Duration = 5
-                    })
-                    return
-                end
-                pcall(function()
-                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        local root = LocalPlayer.Character.HumanoidRootPart
-                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5)
-                        fishPart.CFrame = targetCFrame
-                        Rayfield:Notify({
-                            Title = "Test Fish Teleported",
-                            Content = "Teleported fish " .. specificFishName .. " to front of player",
-                            Duration = 3
-                        })
-                    else
-                        Rayfield:Notify({
-                            Title = "Teleport Warning",
-                            Content = "Player character or HumanoidRootPart not found.",
-                            Duration = 3
-                        })
-                    end
-                end)
-            end)
-        else
-            Rayfield:Notify({
-                Title = "Test Teleport Disabled",
-                Content = "Uji teleport dihentikan",
                 Duration = 4
             })
         end
@@ -609,7 +512,7 @@ local HatchTab = Window:CreateTab("Hatch")
 -- Fungsi untuk mendapatkan list eggs
 local function getEggList()
     local eggList = {}
-    local eggsFolder = workspace.Scripted:FindFirstChild("Eggs")
+    local eggsFolder = workspace.Scripted and workspace.Scripted:FindFirstChild("Eggs")
     if eggsFolder then
         for _, egg in ipairs(eggsFolder:GetChildren()) do
             table.insert(eggList, egg.Name)
@@ -689,7 +592,7 @@ local AutoHatchToggle = HatchTab:CreateToggle({
             })
             -- Teleport player sekali ke egg yang dipilih
             local player = game:GetService("Players").LocalPlayer
-            local eggsFolder = workspace.Scripted:FindFirstChild("Eggs")
+            local eggsFolder = workspace.Scripted and workspace.Scripted:FindFirstChild("Eggs")
             local eggModel = eggsFolder and eggsFolder:FindFirstChild(selectedEgg)
             if eggModel and eggModel.PrimaryPart then
                 local character = player.Character
@@ -707,7 +610,7 @@ local AutoHatchToggle = HatchTab:CreateToggle({
             -- Mulai loop auto hatch tanpa teleport berulang
             autoHatchThread = task.spawn(function()
                 while AutoHatchEnabled do
-                    local eggsFolderNow = workspace.Scripted:FindFirstChild("Eggs")
+                    local eggsFolderNow = workspace.Scripted and workspace.Scripted:FindFirstChild("Eggs")
                     if eggsFolderNow and eggsFolderNow:FindFirstChild(selectedEgg) then
                         local ohString1 = selectedEgg
                         local ohString2 = selectedHowMany
