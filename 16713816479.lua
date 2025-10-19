@@ -425,6 +425,8 @@ local AutoFishToggle = MainTab:CreateToggle({
                 Duration = 4
             })
             autoFishThread = task.spawn(function()
+                local Players = game:GetService("Players")
+                local LocalPlayer = Players.LocalPlayer
                 local RS = game:GetService("ReplicatedStorage")
                 local WS = game:GetService("Workspace")
                 local fishPartsFolder = WS:FindFirstChild("Scripted") and WS.Scripted:FindFirstChild("FishParts")
@@ -464,14 +466,24 @@ local AutoFishToggle = MainTab:CreateToggle({
                             local fishName = part:GetAttribute("FishName")
                             local partZoneId = part:GetAttribute("ZoneId")
                             if fishName and partZoneId and allowedFishNamesSet[fishName] and partZoneId == selectedZoneId then
-                                -- Teleport part ke posisi target (menggunakan ohCFrame6 sebagai basis)
+                                -- Teleport part ke depan player
                                 pcall(function()
-                                    part.CFrame = ohCFrame6
-                                    Rayfield:Notify({
-                                        Title = "Fish Teleported",
-                                        Content = "Teleported " .. fishName .. " in zone " .. tostring(selectedZoneName) .. " to target position",
-                                        Duration = 3
-                                    })
+                                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                                        local root = LocalPlayer.Character.HumanoidRootPart
+                                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5) -- 5 studs di depan player
+                                        part.CFrame = targetCFrame
+                                        Rayfield:Notify({
+                                            Title = "Fish Teleported",
+                                            Content = "Teleported " .. fishName .. " in zone " .. tostring(selectedZoneName) .. " to front of player",
+                                            Duration = 3
+                                        })
+                                    else
+                                        Rayfield:Notify({
+                                            Title = "Teleport Warning",
+                                            Content = "Player character or HumanoidRootPart not found.",
+                                            Duration = 3
+                                        })
+                                    end
                                 end)
                                 -- Panggil CastFishingRod lagi untuk memproses fish setelah teleport
                                 pcall(function()
