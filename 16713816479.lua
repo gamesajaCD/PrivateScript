@@ -367,6 +367,7 @@ local ZoneDropdown = MainTab:CreateDropdown({
     Callback = function(Option)
         selectedZoneName = (typeof(Option) == "table") and Option[1] or Option
         selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName)
+
         Rayfield:Notify({
             Title = "Zone Selected",
             Content = ("Selected Zone: %s (Id: %s)"):format(tostring(selectedZoneName), tostring(selectedZoneId or "?")),
@@ -387,13 +388,13 @@ local function getZoneFolderBySelection()
     local fishFolder = assets and assets:FindFirstChild("Fish")
     if not fishFolder then return nil end
 
-    -- Coba by name dulu
+    -- coba by name dulu
     if selectedZoneName then
         local z = fishFolder:FindFirstChild(selectedZoneName)
         if z then return z end
     end
 
-    -- Fallback by id
+    -- fallback by id
     if selectedZoneId then
         for _, z in ipairs(fishFolder:GetChildren()) do
             if z.Name ~= "NOT USED" then
@@ -417,7 +418,7 @@ local function refreshAllowedFishNames()
     end
 end
 
--- Param lempar kail
+-- Param lempar kail (dari kode kamu)
 local ohNumber1 = 0.9900000000000007
 local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
 local ohVector33 = Vector3.new(-4069.359130859375, -4.571030139923096, -8.79765510559082)
@@ -425,9 +426,9 @@ local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.94023132
 local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
 local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, 0, 0.981970191, 0, 1, 0, -0.981970191, 0, 0.189035907)
 
--- Proses part ikan untuk notifikasi saja
-local processedParts = setmetatable({}, { __mode = "k" }) -- Weak table biar gak leak
-local function processFishPartInstant(part)
+-- Proses part ikan seketika muncul
+local processedParts = setmetatable({}, { __mode = "k" }) -- weak table biar gak leak
+local function processFishPartInstant(castFishingRod, part)
     if not AutoFishEnabled or not part or processedParts[part] then return end
 
     -- Tunggu attribute muncul jika belum ada
@@ -456,29 +457,28 @@ local function processFishPartInstant(part)
 
     processedParts[part] = true
 
-    -- Notifikasi bahwa ikan ditemukan (gerakan ditangani oleh CastFishingRod di loop utama)
-    Rayfield:Notify({
-        Title = "Fish Detected",
-        Content = ("Found %s in zone %s"):format(fishName, tostring(selectedZoneId)),
-        Duration = 3
-    })
+    -- Invoke CastFishingRod untuk langsung memproses/memindahkan fish ini
+    pcall(function()
+        local ohNumber7 = selectedZoneId
+        castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
+    end)
 end
 
--- Pasang watcher untuk mendeteksi part ikan baru
-local function bindFishWatcher(fishPartsFolder)
+-- Pasang watcher agar part yang baru muncul langsung diproses
+local function bindFishWatcher(fishPartsFolder, castFishingRod)
     if fishWatcherConn then
         fishWatcherConn:Disconnect()
         fishWatcherConn = nil
     end
     if not fishPartsFolder then return end
 
-    -- Proses yang sudah ada
+    -- Proses yang sudah ada (kalau ada) biar langsung pindah juga
     for _, child in ipairs(fishPartsFolder:GetChildren()) do
-        task.defer(processFishPartInstant, child)
+        task.defer(processFishPartInstant, castFishingRod, child)
     end
 
     fishWatcherConn = fishPartsFolder.ChildAdded:Connect(function(child)
-        task.defer(processFishPartInstant, child)
+        task.defer(processFishPartInstant, castFishingRod, child)
     end)
 end
 
@@ -492,7 +492,7 @@ local AutoFishToggle = MainTab:CreateToggle({
         if Value then
             Rayfield:Notify({
                 Title = "Auto Fish Enabled",
-                Content = ("Mulai auto fishing di zone %s (Id: %s)"):format(tostring(selectedZoneName), tostring(selectedZoneId or "?")),
+                Content = "Mulai auto fishing di zone " .. tostring(selectedZoneName) .. " (Id: " .. tostring(selectedZoneId or "?") .. ")",
                 Duration = 4
             })
 
@@ -518,30 +518,17 @@ local AutoFishToggle = MainTab:CreateToggle({
                 end
 
                 refreshAllowedFishNames()
-                bindFishWatcher(fishPartsFolder)
+                bindFishWatcher(fishPartsFolder, castFishingRod)
 
-                -- Loop utama: cast berkala
+                -- Loop utama: cast berkala; part yang muncul akan diproses seketika oleh watcher
                 while AutoFishEnabled do
                     if selectedZoneId then
                         pcall(function()
                             local ohNumber7 = selectedZoneId
                             castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                            Rayfield:Notify({
-                                Title = "Auto Fish",
-                                Content = ("Casting fishing rod in zone %s (Id: %s)"):format(tostring(selectedZoneName), tostring(selectedZoneId)),
-                                Duration = 3
-                            })
                         end)
-                        -- Tunggu 5 detik untuk memungkinkan fish diproses/dipindahkan oleh game
-                        task.wait(5)
-                    else
-                        Rayfield:Notify({
-                            Title = "Auto Fish Warning",
-                            Content = "ZoneId tidak valid untuk zone " .. tostring(selectedZoneName),
-                            Duration = 5
-                        })
-                        task.wait(1)
                     end
+                    task.wait(0.8) -- interval cast; sesuaikan agar tidak kena rate limit
                 end
             end)
         else
@@ -558,7 +545,8 @@ local AutoFishToggle = MainTab:CreateToggle({
     end
 })
 
--- Update daftar ikan yang valid saat zone berubah
+-- Jika kamu mengganti zone saat AutoFish nyala, update daftar ikan yang valid
+-- (Watcher tetap aktif dan akan pakai selectedZoneId terbaru)
 ZoneDropdown:OnChanged(function()
     refreshAllowedFishNames()
 end)
