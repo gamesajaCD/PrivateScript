@@ -366,7 +366,7 @@ local autoFishThread = nil
 
 -- Toggle untuk Auto Fish
 local AutoFishToggle = MainTab:CreateToggle({
-    Name = "Auto Fishxz",
+    Name = "Auto Fishaa",
     CurrentValue = false,
     Flag = "AutoFishToggle",
     Callback = function(Value)
@@ -385,16 +385,15 @@ local AutoFishToggle = MainTab:CreateToggle({
                 local castFishingRod = replicatedStorage.Packages.Knit.Services.FarmingService.RF.CastFishingRod
                 
                 while AutoFishEnabled do
-                    local zoneId = tonumber(selectedZone) -- Convert selectedZone to number for ZoneId
                     local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
-                    
+                    local zoneId = tonumber(selectedZone) -- Convert selectedZone to number for ZoneId
                     if zoneFolder and fishPartsFolder then
                         local fishNames = {}
                         for _, fish in ipairs(zoneFolder:GetChildren()) do
                             table.insert(fishNames, fish.Name)
                         end
                         
-                        -- Panggil CastFishingRod untuk memulai fishing
+                        -- Panggil CastFishingRod dengan ZoneId dari dropdown
                         pcall(function()
                             local ohNumber1 = 0.9900000000000007
                             local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
@@ -414,13 +413,13 @@ local AutoFishToggle = MainTab:CreateToggle({
                         -- Tunggu 5 detik untuk memungkinkan fish muncul
                         wait(5)
                         
-                        -- Cek dan proses fish parts yang cocok
+                        -- Cek dan pindahkan fish parts yang cocok
                         for _, part in ipairs(fishPartsFolder:GetChildren()) do
                             if not AutoFishEnabled then break end
                             local fishName = part:GetAttribute("FishName")
                             local partZoneId = part:GetAttribute("ZoneId")
                             if fishName and partZoneId and table.find(fishNames, fishName) and partZoneId == zoneId then
-                                -- Panggil CastFishingRod lagi untuk memproses fish (memindahkan)
+                                -- Panggil CastFishingRod lagi untuk memproses fish
                                 pcall(function()
                                     local ohNumber1 = 0.9900000000000007
                                     local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
