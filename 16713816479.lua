@@ -366,7 +366,7 @@ local autoFishThread = nil
 
 -- Toggle untuk Auto Fish
 local AutoFishToggle = MainTab:CreateToggle({
-    Name = "Auto Fishaa",
+    Name = "Auto Fishb",
     CurrentValue = false,
     Flag = "AutoFishToggle",
     Callback = function(Value)
@@ -385,15 +385,17 @@ local AutoFishToggle = MainTab:CreateToggle({
                 local castFishingRod = replicatedStorage.Packages.Knit.Services.FarmingService.RF.CastFishingRod
                 
                 while AutoFishEnabled do
-                    local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
                     local zoneId = tonumber(selectedZone) -- Convert selectedZone to number for ZoneId
+                    local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
+                    
                     if zoneFolder and fishPartsFolder then
+                        -- Ambil daftar nama ikan di zona yang dipilih
                         local fishNames = {}
                         for _, fish in ipairs(zoneFolder:GetChildren()) do
                             table.insert(fishNames, fish.Name)
                         end
                         
-                        -- Panggil CastFishingRod dengan ZoneId dari dropdown
+                        -- Panggil CastFishingRod dengan parameter yang sesuai
                         pcall(function()
                             local ohNumber1 = 0.9900000000000007
                             local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
@@ -410,16 +412,16 @@ local AutoFishToggle = MainTab:CreateToggle({
                             })
                         end)
                         
-                        -- Tunggu 5 detik untuk memungkinkan fish muncul
+                        -- Tunggu 5 detik untuk memungkinkan fish diproses oleh game
                         wait(5)
                         
-                        -- Cek dan pindahkan fish parts yang cocok
+                        -- Cek dan proses fish parts yang cocok
                         for _, part in ipairs(fishPartsFolder:GetChildren()) do
                             if not AutoFishEnabled then break end
                             local fishName = part:GetAttribute("FishName")
                             local partZoneId = part:GetAttribute("ZoneId")
                             if fishName and partZoneId and table.find(fishNames, fishName) and partZoneId == zoneId then
-                                -- Panggil CastFishingRod lagi untuk memproses fish
+                                -- Panggil CastFishingRod lagi untuk memproses/mindahkan fish
                                 pcall(function()
                                     local ohNumber1 = 0.9900000000000007
                                     local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
@@ -430,7 +432,7 @@ local AutoFishToggle = MainTab:CreateToggle({
                                     local ohNumber7 = zoneId
                                     castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
                                     Rayfield:Notify({
-                                        Title = "Fish Caught",
+                                        Title = "Fish Processed",
                                         Content = "Processed " .. fishName .. " in zone " .. selectedZone,
                                         Duration = 3
                                     })
