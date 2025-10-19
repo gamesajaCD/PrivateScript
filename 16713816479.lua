@@ -623,7 +623,7 @@ local InstantCatchFishToggle = MainTab:CreateToggle({
                     pcall(function()
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.CatchSequenceFinish:InvokeServer(ohBoolean1, ohBoolean2)
                     end)
-                    wait(0.1)
+                    wait(5)
                 end
             end)
         else
