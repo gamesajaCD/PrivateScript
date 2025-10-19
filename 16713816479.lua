@@ -522,6 +522,72 @@ ZoneDropdown:OnChanged(function()
     refreshAllowedFishNames()
 end)
 
+-- Toggle untuk Uji Teleport Fish Spesifik
+local TestTeleportEnabled = false
+local TestTeleportToggle = MainTab:CreateToggle({
+    Name = "Test Teleport Fish",
+    CurrentValue = false,
+    Flag = "TestTeleportToggle",
+    Callback = function(Value)
+        TestTeleportEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Test Teleport Enabled",
+                Content = "Mencoba teleport fish spesifik",
+                Duration = 4
+            })
+            task.spawn(function()
+                local Players = game:GetService("Players")
+                local LocalPlayer = Players.LocalPlayer
+                local WS = game:GetService("Workspace")
+                local fishPartsFolder = WS:FindFirstChild("Scripted") and WS.Scripted:FindFirstChild("FishParts")
+                if not fishPartsFolder then
+                    Rayfield:Notify({
+                        Title = "Test Teleport Warning",
+                        Content = "FishParts folder tidak ditemukan.",
+                        Duration = 5
+                    })
+                    return
+                end
+                local specificFishName = "03617b563bc44f7ea4a6ef51fb2ef45b"
+                local fishPart = fishPartsFolder:FindFirstChild(specificFishName)
+                if not fishPart then
+                    Rayfield:Notify({
+                        Title = "Test Teleport Warning",
+                        Content = "Fish part dengan nama " .. specificFishName .. " tidak ditemukan.",
+                        Duration = 5
+                    })
+                    return
+                end
+                pcall(function()
+                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        local root = LocalPlayer.Character.HumanoidRootPart
+                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5) -- 5 studs di depan player
+                        fishPart.CFrame = targetCFrame
+                        Rayfield:Notify({
+                            Title = "Test Fish Teleported",
+                            Content = "Teleported fish " .. specificFishName .. " to front of player",
+                            Duration = 3
+                        })
+                    else
+                        Rayfield:Notify({
+                            Title = "Teleport Warning",
+                            Content = "Player character or HumanoidRootPart not found.",
+                            Duration = 3
+                        })
+                    end
+                end)
+            end)
+        else
+            Rayfield:Notify({
+                Title = "Test Teleport Disabled",
+                Content = "Uji teleport dihentikan",
+                Duration = 4
+            })
+        end
+    end
+})
+
 -- Variabel untuk Auto Claim Gift
 local AutoClaimGiftEnabled = false
 local autoClaimGiftThread = nil
