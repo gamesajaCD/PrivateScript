@@ -325,7 +325,7 @@ local AutoMiningToggle = MainTab:CreateToggle({
 })
 
 -- Membuat section Fish
-local FishSection = MainTab:CreateSection("Fish Features")
+local FishSection = MainTab:CreateSection("Fish Features z")
 
 -- Fungsi untuk mendapatkan list zones
 local function getZoneList()
@@ -387,52 +387,57 @@ local AutoFishToggle = MainTab:CreateToggle({
                 
                 while AutoFishEnabled do
                     local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
+                    local zoneId = tonumber(selectedZone) -- Convert selectedZone to number for ZoneId
                     if zoneFolder and fishPartsFolder then
-                        -- Ambil nama-nama ikan di zone yang dipilih
                         local fishNames = {}
                         for _, fish in ipairs(zoneFolder:GetChildren()) do
                             table.insert(fishNames, fish.Name)
                         end
                         
-                        -- Cari part di FishParts dengan ZoneId dan FishName yang sesuai
+                        local foundFish = false
                         for _, part in ipairs(fishPartsFolder:GetChildren()) do
                             if not AutoFishEnabled then break end
-                            local zoneId = part:GetAttribute("ZoneId")
                             local fishName = part:GetAttribute("FishName")
-                            
-                            if zoneId == tonumber(selectedZone) and table.find(fishNames, fishName) then
-                                -- Pindahkan part ke target folder
+                            local partZoneId = part:GetAttribute("ZoneId")
+                            if fishName and partZoneId and table.find(fishNames, fishName) and partZoneId == zoneId then
+                                -- Teleport part ke target folder
                                 part.Parent = targetFolder
-                                
-                                -- Panggil CastFishingRod dengan parameter yang diberikan
+                                foundFish = true
+                                Rayfield:Notify({
+                                    Title = "Fish Caught",
+                                    Content = "Moved " .. fishName .. " to target folder",
+                                    Duration = 3
+                                })
+                                wait(0.1) -- Delay per fish
+                            end
+                        end
+                        
+                        if not foundFish then
+                            -- Panggil CastFishingRod jika tidak ada fish yang cocok
+                            pcall(function()
                                 local ohNumber1 = 0.9900000000000007
                                 local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
                                 local ohVector33 = Vector3.new(-4069.359130859375, -4.571030139923096, -8.79765510559082)
                                 local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.9402313232421875)
                                 local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
                                 local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, -0, 0.981970191, 0, 1, -0, -0.981970191, 0, 0.189035907)
-                                local ohNumber7 = tonumber(selectedZone)  -- ZoneId sesuai dropdown
-                                
-                                pcall(function()
-                                    castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                                end)
-                                
+                                local ohNumber7 = zoneId
+                                castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
                                 Rayfield:Notify({
-                                    Title = "Fish Caught",
-                                    Content = "Moved " .. fishName .. " to target folder and cast fishing rod",
+                                    Title = "Auto Fish",
+                                    Content = "Casting fishing rod in zone " .. selectedZone,
                                     Duration = 3
                                 })
-                                wait(0.1)  -- Delay per fish
-                            end
+                            end)
                         end
                     else
                         Rayfield:Notify({
                             Title = "Auto Fish Warning",
-                            Content = zoneFolder and "FishParts folder not found" or "No zone folder found for " .. selectedZone,
+                            Content = "No zone folder or FishParts found for zone " .. selectedZone,
                             Duration = 5
                         })
                     end
-                    wait(1)  -- Delay loop utama
+                    wait(1) -- Delay loop utama
                 end
             end)
         else
