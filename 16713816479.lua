@@ -366,7 +366,7 @@ local autoFishThread = nil
 
 -- Toggle untuk Auto Fish
 local AutoFishToggle = MainTab:CreateToggle({
-    Name = "Auto Fishz",
+    Name = "Auto Fisha",
     CurrentValue = false,
     Flag = "AutoFishToggle",
     Callback = function(Value)
@@ -379,46 +379,15 @@ local AutoFishToggle = MainTab:CreateToggle({
             })
             autoFishThread = spawn(function()
                 local replicatedStorage = game:GetService("ReplicatedStorage")
-                local workspace = game:GetService("Workspace")
-                local fishFolder = replicatedStorage.Assets:FindFirstChild("Fish")
-                local fishPartsFolder = workspace.Scripted:FindFirstChild("FishParts")
                 local castFishingRod = replicatedStorage.Packages.Knit.Services.FarmingService.RF.CastFishingRod
                 
                 while AutoFishEnabled do
-                    local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
                     local zoneId = tonumber(selectedZone) -- Convert selectedZone to number for ZoneId
-                    if zoneFolder and fishPartsFolder then
-                        local fishNames = {}
-                        for _, fish in ipairs(zoneFolder:GetChildren()) do
-                            table.insert(fishNames, fish.Name)
-                        end
-                        
-                        for _, part in ipairs(fishPartsFolder:GetChildren()) do
-                            if not AutoFishEnabled then break end
-                            local fishName = part:GetAttribute("FishName")
-                            local partZoneId = part:GetAttribute("ZoneId")
-                            if fishName and partZoneId and table.find(fishNames, fishName) and partZoneId == zoneId then
-                                -- Panggil CastFishingRod untuk fish yang cocok
-                                pcall(function()
-                                    local ohNumber1 = 0.9900000000000007
-                                    local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
-                                    local ohVector33 = Vector3.new(-4069.359130859375, -4.571030139923096, -8.79765510559082)
-                                    local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.9402313232421875)
-                                    local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
-                                    local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, -0, 0.981970191, 0, 1, -0, -0.981970191, 0, 0.189035907)
-                                    local ohNumber7 = zoneId
-                                    castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                                    Rayfield:Notify({
-                                        Title = "Fish Caught",
-                                        Content = "Processed " .. fishName .. " in zone " .. selectedZone,
-                                        Duration = 3
-                                    })
-                                end)
-                                wait(5) -- Tunggu 5 detik setelah setiap cast
-                            end
-                        end
-                    else
-                        -- Panggil CastFishingRod jika tidak ada fish parts yang cocok
+                    local fishFolder = replicatedStorage.Assets:FindFirstChild("Fish")
+                    local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
+                    
+                    if zoneFolder then
+                        -- Panggil CastFishingRod dengan semua parameter
                         pcall(function()
                             local ohNumber1 = 0.9900000000000007
                             local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
@@ -434,7 +403,15 @@ local AutoFishToggle = MainTab:CreateToggle({
                                 Duration = 3
                             })
                         end)
-                        wait(5) -- Tunggu 5 detik setelah cast
+                        
+                        -- Tunggu 5 detik untuk memungkinkan fish diproses oleh game
+                        wait(5)
+                    else
+                        Rayfield:Notify({
+                            Title = "Auto Fish Warning",
+                            Content = "No zone folder found for " .. selectedZone,
+                            Duration = 5
+                        })
                     end
                     wait(1) -- Delay loop utama
                 end
