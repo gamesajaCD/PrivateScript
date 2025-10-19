@@ -353,7 +353,7 @@ local zoneList, zoneNameToId = getZoneData()
 local selectedZoneName = zoneList[1] or "1"
 local selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName) or 1
 -- Dropdown untuk Zone
-local ZoneDropdown = FishSection:CreateDropdown({
+local ZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone",
     Options = zoneList,
     CurrentOption = selectedZoneName,
@@ -412,7 +412,7 @@ local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.94023132
 local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
 local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, 0, 0.981970191, 0, 1, 0, -0.981970191, 0, 0.189035907)
 -- Toggle untuk Auto Fish
-local AutoFishToggle = FishSection:CreateToggle({
+local AutoFishToggle = MainTab:CreateToggle({
     Name = "Auto Fish",
     CurrentValue = false,
     Flag = "AutoFishToggle",
@@ -524,7 +524,7 @@ end)
 
 -- Toggle untuk Uji Teleport Fish Spesifik
 local TestTeleportEnabled = false
-local TestTeleportToggle = FishSection:CreateToggle({
+local TestTeleportToggle = MainTab:CreateToggle({
     Name = "Test Teleport Fish",
     CurrentValue = false,
     Flag = "TestTeleportToggle",
