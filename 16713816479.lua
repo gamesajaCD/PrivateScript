@@ -7,8 +7,10 @@ if not success then
     warn("Failed to load Rayfield library: " .. tostring(errorMsg))
     return
 end
+
 -- Mendapatkan nama game secara otomatis
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+
 -- Membuat jendela utama dengan judul otomatis
 local Window = Rayfield:CreateWindow({
     Name = gameName,
@@ -39,110 +41,14 @@ local Window = Rayfield:CreateWindow({
         Key = {"https://pastebin.com/raw/vTu6rCev"}
     }
 })
+
 -- Membuat tab Main
 local MainTab = Window:CreateTab("Main")
-
---[[
--- Fungsi untuk mendapatkan list plots
-local function getPlotList()
-    local plotList = {}
-    local plotsFolder = workspace.Scripted:FindFirstChild("Plots")
-    if plotsFolder then
-        for _, plot in ipairs(plotsFolder:GetChildren()) do
-            table.insert(plotList, plot.Name)
-        end
-    end
-    return plotList
-end
-local plotList = getPlotList()
-local selectedPlot = plotList[1] or "1"
--- Dropdown untuk Plots
-local PlotsDropdown = MainTab:CreateDropdown({
-    Name = "Select Plot",
-    Options = plotList,
-    CurrentOption = selectedPlot,
-    Flag = "PlotsDropdown",
-    Callback = function(Option)
-        selectedPlot = (typeof(Option) == "table") and Option[1] or Option
-        Rayfield:Notify({
-            Title = "Plot Selected",
-            Content = "Selected Plot: " .. tostring(selectedPlot),
-            Duration = 5
-        })
-    end
-})
--- Variabel untuk Auto Click
-local AutoClickEnabled = false
-local autoClickThread = nil
--- Fungsi untuk mendapatkan current coin models di selected plot
-local function getCoinsInPlot(plotName)
-    local coins = {}
-    local plotsFolder = workspace.Scripted:FindFirstChild("Plots")
-    local plotFolder = plotsFolder and plotsFolder:FindFirstChild(plotName)
-    if plotFolder then
-        for _, coin in ipairs(plotFolder:GetChildren()) do
-            if coin:IsA("Model") and coin.Name:match("^%x+$") and #coin.Name == 32 then
-                table.insert(coins, coin)
-            end
-        end
-    end
-    return coins
-end
--- Toggle untuk Auto Click
-local AutoClickToggle = MainTab:CreateToggle({
-    Name = "Auto Click",
-    CurrentValue = false,
-    Flag = "AutoClickToggle",
-    Callback = function(Value)
-        AutoClickEnabled = Value
-        if Value then
-            Rayfield:Notify({
-                Title = "Auto Click Enabled",
-                Content = "Started auto clicking coins in plot " .. selectedPlot,
-                Duration = 5
-            })
-            autoClickThread = spawn(function()
-                while AutoClickEnabled do
-                    local coins = getCoinsInPlot(selectedPlot)
-                    if #coins > 0 then
-                        for _, coinModel in ipairs(coins) do
-                            if not AutoClickEnabled then break end
-                            while AutoClickEnabled and coinModel.Parent do
-                                -- Click (BreakableClicked)
-                                local ohNumber1 = tonumber(selectedPlot) or 1
-                                local ohString2 = coinModel.Name
-                                pcall(function()
-                                    game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.BreakableClicked:InvokeServer(ohNumber1, ohString2)
-                                end)
-                                wait(0.1)
-                            end
-                        end
-                    else
-                        Rayfield:Notify({
-                            Title = "Auto Click Warning",
-                            Content = "No coins found in plot " .. selectedPlot,
-                            Duration = 5
-                        })
-                        wait(1)
-                    end
-                    wait(0.5) -- Delay loop utama
-                end
-            end)
-        else
-            Rayfield:Notify({
-                Title = "Auto Click Disabled",
-                Content = "Auto Click has been stopped",
-                Duration = 5
-            })
-        end
-    end
-})
-]]
 
 -- Membuat section Tree & Stone
 local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
 
--- Fungsi untuk mendapatkan list zones
+-- Fungsi untuk mendapatkan list zones (Tree/Stone)
 local function getZoneList()
     local zoneList = {}
     local zonesFolder = workspace.__WORLD.MAP:FindFirstChild("Zones")
@@ -157,8 +63,8 @@ end
 local zoneList = getZoneList()
 local selectedZone = zoneList[1] or "1"
 
--- Dropdown untuk Zone
-local TreeZoneDropdown = MainTab:CreateDropdown({
+-- Dropdown untuk Zone (Tree/Stone)
+local ZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone",
     Options = zoneList,
     CurrentOption = selectedZone,
@@ -190,7 +96,7 @@ local AutoTreeToggle = MainTab:CreateToggle({
                 Content = "Started auto farming trees in zone " .. selectedZone,
                 Duration = 5
             })
-            autoTreeThread = spawn(function()
+            autoTreeThread = task.spawn(function()
                 local player = game:GetService("Players").LocalPlayer
                 local zonesFolder = workspace.__WORLD.MAP:FindFirstChild("Zones")
                 while AutoTreeEnabled do
@@ -200,24 +106,21 @@ local AutoTreeToggle = MainTab:CreateToggle({
                         for _, tree in ipairs(breakableTreesFolder:GetChildren()) do
                             if not AutoTreeEnabled then break end
                             if tree:IsA("Model") and tree.PrimaryPart then
-                                -- Teleport player ke tree
                                 local character = player.Character
                                 local rootPart = character and character:FindFirstChild("HumanoidRootPart")
                                 if rootPart then
                                     rootPart.CFrame = tree.PrimaryPart.CFrame * CFrame.new(0, 5, 0)
                                 end
-                                -- Periksa PosId sebelum memanggil DamageTree
                                 local posId = tree:GetAttribute("PosId")
                                 if posId and posId ~= "" then
-                                    -- Loop damage sampai hilang
                                     while AutoTreeEnabled and tree.Parent do
                                         local ohString1 = selectedZone
-                                        local ohString2 = tostring(posId) -- Convert to string if needed
+                                        local ohString2 = tostring(posId)
                                         local ohBoolean3 = true
                                         pcall(function()
                                             game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.DamageTree:InvokeServer(ohString1, ohString2, ohBoolean3)
                                         end)
-                                        wait(0.1)
+                                        task.wait(0.1)
                                     end
                                 else
                                     Rayfield:Notify({
@@ -235,7 +138,7 @@ local AutoTreeToggle = MainTab:CreateToggle({
                             Duration = 5
                         })
                     end
-                    wait(1) -- Delay loop utama
+                    task.wait(1)
                 end
             end)
         else
@@ -265,7 +168,7 @@ local AutoMiningToggle = MainTab:CreateToggle({
                 Content = "Started auto mining ores in zone " .. selectedZone,
                 Duration = 5
             })
-            autoMiningThread = spawn(function()
+            autoMiningThread = task.spawn(function()
                 local player = game:GetService("Players").LocalPlayer
                 local zonesFolder = workspace.__WORLD.MAP:FindFirstChild("Zones")
                 local DamageOre = game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.DamageOre
@@ -276,24 +179,21 @@ local AutoMiningToggle = MainTab:CreateToggle({
                         for _, ore in ipairs(breakableOresFolder:GetChildren()) do
                             if not AutoMiningEnabled then break end
                             if ore:IsA("Model") and ore.PrimaryPart then
-                                -- Teleport player ke ore
                                 local character = player.Character
                                 local rootPart = character and character:FindFirstChild("HumanoidRootPart")
                                 if rootPart then
                                     rootPart.CFrame = ore.PrimaryPart.CFrame * CFrame.new(0, 5, 0)
                                 end
-                                -- Periksa PosId sebelum memanggil DamageOre
                                 local posId = ore:GetAttribute("PosId")
                                 if posId and posId ~= "" then
-                                    -- Loop damage sampai hilang
                                     while AutoMiningEnabled and ore.Parent do
                                         local ohString1 = selectedZone
-                                        local ohString2 = tostring(posId) -- Convert to string if needed
+                                        local ohString2 = tostring(posId)
                                         local ohNumber3 = 1
                                         pcall(function()
                                             DamageOre:InvokeServer(ohString1, ohString2, ohNumber3)
                                         end)
-                                        wait(0.1)
+                                        task.wait(0.1)
                                     end
                                 else
                                     Rayfield:Notify({
@@ -311,7 +211,7 @@ local AutoMiningToggle = MainTab:CreateToggle({
                             Duration = 5
                         })
                     end
-                    wait(1) -- Delay loop utama
+                    task.wait(1)
                 end
             end)
         else
@@ -326,15 +226,17 @@ local AutoMiningToggle = MainTab:CreateToggle({
 
 -- Membuat section Fish
 local FishSection = MainTab:CreateSection("Fish Features")
--- Utils
+
+-- Utils (Fish)
 local function parseZoneIdFromName(name)
     if typeof(name) ~= "string" then return nil end
     local numStr = name:match("%d+")
     if numStr then return tonumber(numStr) end
     return tonumber(name)
 end
+
 local function getZoneData()
-    local zoneList = {}
+    local list = {}
     local nameToId = {}
     local RS = game:GetService("ReplicatedStorage")
     local assets = RS:FindFirstChild("Assets")
@@ -342,25 +244,36 @@ local function getZoneData()
     if fishFolder then
         for _, zone in ipairs(fishFolder:GetChildren()) do
             if zone.Name ~= "NOT USED" then
-                table.insert(zoneList, zone.Name)
+                table.insert(list, zone.Name)
                 nameToId[zone.Name] = zone:GetAttribute("ZoneId") or parseZoneIdFromName(zone.Name)
             end
         end
     end
-    return zoneList, nameToId
+    return list, nameToId
 end
+
 local fishZoneList, zoneNameToId = getZoneData()
 local selectedZoneName = fishZoneList[1] or "1"
 local selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName) or 1
--- Dropdown untuk Zone
-local FishZoneDropdown = FishSection:CreateDropdown({
-    Name = "Select Zone",
+
+-- Dropdown untuk Zone (Fish)
+local ZoneDropdownFish = MainTab:CreateDropdown({
+    Name = "Select Zone (Fish)",
     Options = fishZoneList,
     CurrentOption = selectedZoneName,
     Flag = "ZoneDropdownFish",
     Callback = function(Option)
         selectedZoneName = (typeof(Option) == "table") and Option[1] or Option
         selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName) or 1
+        -- REFRESH daftar ikan yang valid tiap zone berubah
+        task.spawn(function()
+            task.wait() -- kecil biar aman di thread UI
+            local ok, err = pcall(function()
+                local _ = selectedZoneId -- placeholder
+            end)
+            -- panggil refreshAllowedFishNames di luar error
+        end)
+        refreshAllowedFishNames()
         Rayfield:Notify({
             Title = "Zone Selected",
             Content = ("Selected Zone: %s (Id: %s)"):format(tostring(selectedZoneName), tostring(selectedZoneId)),
@@ -368,21 +281,20 @@ local FishZoneDropdown = FishSection:CreateDropdown({
         })
     end
 })
--- Variabel untuk Auto Fish
+
+-- Variabel & helper (Fish)
 local AutoFishEnabled = false
 local autoFishThread = nil
--- Helper: cari folder zone dan daftar ikan yang valid
+
 local function getZoneFolderBySelection()
     local RS = game:GetService("ReplicatedStorage")
     local assets = RS:FindFirstChild("Assets")
     local fishFolder = assets and assets:FindFirstChild("Fish")
     if not fishFolder then return nil end
-    -- Coba by name dulu
     if selectedZoneName then
         local z = fishFolder:FindFirstChild(selectedZoneName)
         if z then return z end
     end
-    -- Fallback by id
     if selectedZoneId then
         for _, z in ipairs(fishFolder:GetChildren()) do
             if z.Name ~= "NOT USED" then
@@ -395,6 +307,7 @@ local function getZoneFolderBySelection()
     end
     return nil
 end
+
 local allowedFishNamesSet = {}
 local function refreshAllowedFishNames()
     table.clear(allowedFishNamesSet)
@@ -404,6 +317,7 @@ local function refreshAllowedFishNames()
         allowedFishNamesSet[fish.Name] = true
     end
 end
+
 -- Param lempar kail
 local ohNumber1 = 0.9900000000000007
 local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
@@ -411,8 +325,9 @@ local ohVector33 = Vector3.new(-4069.359130859375, -4.571030139923096, -8.797655
 local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.9402313232421875)
 local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
 local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, 0, 0.981970191, 0, 1, 0, -0.981970191, 0, 0.189035907)
+
 -- Toggle untuk Auto Fish
-local AutoFishToggle = FishSection:CreateToggle({
+local AutoFishToggle = MainTab:CreateToggle({
     Name = "Auto Fish",
     CurrentValue = false,
     Flag = "AutoFishToggle",
@@ -448,54 +363,28 @@ local AutoFishToggle = FishSection:CreateToggle({
                 while AutoFishEnabled do
                     local zoneFolder = getZoneFolderBySelection()
                     if zoneFolder and selectedZoneId then
-                        -- Panggil CastFishingRod untuk memulai fishing
                         pcall(function()
                             local ohNumber7 = selectedZoneId
                             castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                            Rayfield:Notify({
-                                Title = "Auto Fish",
-                                Content = "Casting fishing rod in zone " .. tostring(selectedZoneName) .. " (Id: " .. tostring(selectedZoneId) .. ")",
-                                Duration = 3
-                            })
                         end)
-                        -- Tunggu 5 detik untuk memungkinkan fish muncul
                         task.wait(5)
-                        -- Cek dan proses fish parts yang cocok
                         for _, part in ipairs(fishPartsFolder:GetChildren()) do
                             if not AutoFishEnabled then break end
                             local fishName = part:GetAttribute("FishName")
                             local partZoneId = part:GetAttribute("ZoneId")
                             if fishName and partZoneId and allowedFishNamesSet[fishName] and partZoneId == selectedZoneId then
-                                -- Teleport part ke depan player
                                 pcall(function()
                                     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                                         local root = LocalPlayer.Character.HumanoidRootPart
-                                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5) -- 5 studs di depan player
+                                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5)
                                         part.CFrame = targetCFrame
-                                        Rayfield:Notify({
-                                            Title = "Fish Teleported",
-                                            Content = "Teleported " .. fishName .. " in zone " .. tostring(selectedZoneName) .. " to front of player",
-                                            Duration = 3
-                                        })
-                                    else
-                                        Rayfield:Notify({
-                                            Title = "Teleport Warning",
-                                            Content = "Player character or HumanoidRootPart not found.",
-                                            Duration = 3
-                                        })
                                     end
                                 end)
-                                -- Panggil CastFishingRod lagi untuk memproses fish setelah teleport
                                 pcall(function()
                                     local ohNumber7 = selectedZoneId
                                     castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                                    Rayfield:Notify({
-                                        Title = "Fish Processed",
-                                        Content = "Processed " .. fishName .. " in zone " .. tostring(selectedZoneName),
-                                        Duration = 3
-                                    })
                                 end)
-                                task.wait(0.1) -- Delay kecil per fish untuk menghindari spam
+                                task.wait(0.1)
                             end
                         end
                     else
@@ -505,7 +394,7 @@ local AutoFishToggle = FishSection:CreateToggle({
                             Duration = 5
                         })
                     end
-                    task.wait(1) -- Delay loop utama
+                    task.wait(1)
                 end
             end)
         else
@@ -517,14 +406,10 @@ local AutoFishToggle = FishSection:CreateToggle({
         end
     end
 })
--- Update daftar ikan yang valid saat zone berubah
-FishZoneDropdown:OnChanged(function()
-    refreshAllowedFishNames()
-end)
 
 -- Toggle untuk Uji Teleport Fish Spesifik
 local TestTeleportEnabled = false
-local TestTeleportToggle = FishSection:CreateToggle({
+local TestTeleportToggle = MainTab:CreateToggle({
     Name = "Test Teleport Fish",
     CurrentValue = false,
     Flag = "TestTeleportToggle",
@@ -562,7 +447,7 @@ local TestTeleportToggle = FishSection:CreateToggle({
                 pcall(function()
                     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                         local root = LocalPlayer.Character.HumanoidRootPart
-                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5) -- 5 studs di depan player
+                        local targetCFrame = root.CFrame * CFrame.new(0, 0, -5)
                         fishPart.CFrame = targetCFrame
                         Rayfield:Notify({
                             Title = "Test Fish Teleported",
@@ -591,6 +476,7 @@ local TestTeleportToggle = FishSection:CreateToggle({
 -- Variabel untuk Auto Claim Gift
 local AutoClaimGiftEnabled = false
 local autoClaimGiftThread = nil
+
 -- Toggle untuk Auto Claim Gift
 local AutoClaimGiftToggle = MainTab:CreateToggle({
     Name = "Auto Claim Gift",
@@ -604,11 +490,15 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
                 Content = "Started auto claiming gifts",
                 Duration = 5
             })
-            autoClaimGiftThread = spawn(function()
-                local giftsFolder = game:GetService("Players").LocalPlayer.PlayerGui.FreeGifts.Frame.Playtime.Gifts
+            autoClaimGiftThread = task.spawn(function()
                 while AutoClaimGiftEnabled do
-                    for _, gift in ipairs(giftsFolder:GetChildren()) do
-                        if AutoClaimGiftEnabled then
+                    local giftsFolder
+                    pcall(function()
+                        giftsFolder = game:GetService("Players").LocalPlayer.PlayerGui.FreeGifts.Frame.Playtime.Gifts
+                    end)
+                    if giftsFolder then
+                        for _, gift in ipairs(giftsFolder:GetChildren()) do
+                            if not AutoClaimGiftEnabled then break end
                             local timerLabel = gift:FindFirstChild("Timer")
                             if timerLabel and timerLabel.Text == "Claim!" then
                                 local ohString1 = gift.Name
@@ -625,7 +515,7 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
                             end
                         end
                     end
-                    wait(1) -- Check setiap detik
+                    task.wait(1)
                 end
             end)
         else
@@ -637,9 +527,11 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
         end
     end
 })
+
 -- Variabel untuk Instant Catch Fish
 local InstantCatchFishEnabled = false
 local instantCatchFishThread = nil
+
 -- Toggle untuk Instant Catch Fish
 local InstantCatchFishToggle = MainTab:CreateToggle({
     Name = "Instant Catch Fish",
@@ -653,14 +545,14 @@ local InstantCatchFishToggle = MainTab:CreateToggle({
                 Content = "Started instant catching fish",
                 Duration = 5
             })
-            instantCatchFishThread = spawn(function()
+            instantCatchFishThread = task.spawn(function()
                 while InstantCatchFishEnabled do
                     local ohBoolean1 = true
                     local ohBoolean2 = true
                     pcall(function()
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.CatchSequenceFinish:InvokeServer(ohBoolean1, ohBoolean2)
                     end)
-                    wait(0.1)
+                    task.wait(0.1)
                 end
             end)
         else
@@ -675,9 +567,11 @@ local InstantCatchFishToggle = MainTab:CreateToggle({
 
 -- Membuat section Other
 local OtherSection = MainTab:CreateSection("Other Features")
+
 -- Variabel untuk Auto Spin
 local AutoSpinEnabled = false
 local autoSpinThread = nil
+
 -- Toggle untuk Auto Spin
 local AutoSpinToggle = MainTab:CreateToggle({
     Name = "Auto Spin",
@@ -691,12 +585,12 @@ local AutoSpinToggle = MainTab:CreateToggle({
                 Content = "Started auto spinning",
                 Duration = 5
             })
-            autoSpinThread = spawn(function()
+            autoSpinThread = task.spawn(function()
                 while AutoSpinEnabled do
                     pcall(function()
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.DataService.RF.StartWheelSpin:InvokeServer()
                     end)
-                    wait(1)
+                    task.wait(1)
                 end
             end)
         else
@@ -708,6 +602,7 @@ local AutoSpinToggle = MainTab:CreateToggle({
         end
     end
 })
+
 -- Membuat tab Hatch
 local HatchTab = Window:CreateTab("Hatch")
 
@@ -810,16 +705,15 @@ local AutoHatchToggle = HatchTab:CreateToggle({
                 })
             end
             -- Mulai loop auto hatch tanpa teleport berulang
-            autoHatchThread = spawn(function()
+            autoHatchThread = task.spawn(function()
                 while AutoHatchEnabled do
-                    if eggsFolder and eggsFolder:FindFirstChild(selectedEgg) then
-                        -- Fungsi pertama: HatchEgg
+                    local eggsFolderNow = workspace.Scripted:FindFirstChild("Eggs")
+                    if eggsFolderNow and eggsFolderNow:FindFirstChild(selectedEgg) then
                         local ohString1 = selectedEgg
                         local ohString2 = selectedHowMany
                         pcall(function()
                             game:GetService("ReplicatedStorage").Packages.Knit.Services.InventoryService.RF.HatchEgg:InvokeServer(ohString1, ohString2)
                         end)
-                        -- Fungsi kedua: OnHatchFinish
                         pcall(function()
                             game:GetService("ReplicatedStorage").Packages.Knit.Services.InventoryService.RF.OnHatchFinish:InvokeServer()
                         end)
@@ -830,7 +724,7 @@ local AutoHatchToggle = HatchTab:CreateToggle({
                             Duration = 5
                         })
                     end
-                    wait(1)
+                    task.wait(1)
                 end
             end)
         else
@@ -843,143 +737,12 @@ local AutoHatchToggle = HatchTab:CreateToggle({
     end
 })
 
---[[
--- Membuat tab Merchant
-local MerchantTab = Window:CreateTab("Merchant")
--- Membuat section Merchant
-local MerchantSection = MerchantTab:CreateSection("Merchant")
--- Fungsi untuk mendapatkan list merchant items
-local function getMerchantList()
-    local list = {"All Item"}
-    local scrollingFrame = game:GetService("Players").LocalPlayer.PlayerGui.Merchant.Frame.MerchantTypes["1"].ScrollingFrame
-    for _, template in ipairs(scrollingFrame:GetChildren()) do
-        if template:IsA("Frame") and template:FindFirstChild("ItemName") and template:FindFirstChild("StockLeft") then
-            local stockText = template.StockLeft.Text
-            local itemText = template.ItemName.Text
-            local stockNum = tonumber(stockText:match("%d+")) or 0
-            if stockNum > 0 then
-                table.insert(list, stockText .. " - " .. itemText)
-            end
-        end
-    end
-    return list
-end
-local merchantList = getMerchantList()
-local selectedMerchants = {}
--- Dropdown untuk Merchant (multi)
-local MerchantDropdown = MerchantTab:CreateDropdown({
-    Name = "Select Merchant Item",
-    Options = merchantList,
-    CurrentOption = selectedMerchants,
-    MultipleOptions = true,
-    Flag = "MerchantDropdown",
-    Callback = function(Option)
-        selectedMerchants = (typeof(Option) == "table") and Option or {Option}
-        Rayfield:Notify({
-            Title = "Merchant Item Selected",
-            Content = "Selected: " .. table.concat(selectedMerchants, ", "),
-            Duration = 5
-        })
-    end
-})
--- Button Refresh Merchant List
-local RefreshMerchantButton = MerchantTab:CreateButton({
-    Name = "Refresh Merchant List",
-    Callback = function()
-        merchantList = getMerchantList()
-        MerchantDropdown:Refresh(merchantList, true)
-        Rayfield:Notify({
-            Title = "Merchant List Refreshed",
-            Content = "Merchant list has been updated",
-            Duration = 5
-        })
-    end
-})
--- Dropdown untuk How Many
-local howManyMerchantList = {"Purchase 1", "Purchase All"}
-local selectedHowManyMerchant = howManyMerchantList[1]
-local HowManyMerchantDropdown = MerchantTab:CreateDropdown({
-    Name = "How Many",
-    Options = howManyMerchantList,
-    CurrentOption = selectedHowManyMerchant,
-    Flag = "HowManyMerchantDropdown",
-    Callback = function(Option)
-        selectedHowManyMerchant = (typeof(Option) == "table") and Option[1] or Option
-        Rayfield:Notify({
-            Title = "How Many Selected",
-            Content = "Selected: " .. tostring(selectedHowManyMerchant),
-            Duration = 5
-        })
-    end
-})
--- Variabel untuk Auto Buy Merchant
-local AutoBuyMerchantEnabled = false
-local autoBuyMerchantThread = nil
--- Toggle untuk Auto Buy Merchant
-local AutoBuyMerchantToggle = MerchantTab:CreateToggle({
-    Name = "Auto Buy Merchant",
-    CurrentValue = false,
-    Flag = "AutoBuyMerchantToggle",
-    Callback = function(Value)
-        AutoBuyMerchantEnabled = Value
-        if Value then
-            Rayfield:Notify({
-                Title = "Auto Buy Merchant Enabled",
-                Content = "Started auto buying merchant items",
-                Duration = 5
-            })
-            autoBuyMerchantThread = spawn(function()
-                local ohString1 = "Basic"
-                while AutoBuyMerchantEnabled do
-                    local scrollingFrame = game:GetService("Players").LocalPlayer.PlayerGui.Merchant.Frame.MerchantTypes["1"].ScrollingFrame
-                    local isAll = table.find(selectedMerchants, "All Item")
-                    for id = 1467120, 1467140 do
-                        if not AutoBuyMerchantEnabled then break end
-                        local template = scrollingFrame:FindFirstChild(tostring(id)) or scrollingFrame:FindFirstChild(tostring(id - 1467124 + 19)) -- Attempt to find template by ID or adjusted
-                        if template and template:IsA("Frame") and template:FindFirstChild("ItemName") and template:FindFirstChild("StockLeft") then
-                            local stockText = template.StockLeft.Text
-                            local itemText = template.ItemName.Text
-                            local option = stockText .. " - " .. itemText
-                            local stockNum = tonumber(stockText:match("%d+")) or 0
-                            if stockNum > 0 and (isAll or table.find(selectedMerchants, option)) then
-                                local ohNumber2 = id
-                                local ohNumber3 = tonumber(template.Name) or id
-                                local ok, err = pcall(function()
-                                    if selectedHowManyMerchant == "Purchase All" then
-                                        game:GetService("ReplicatedStorage").Packages.Knit.Services.DataService.RF.PurchaseMerchantItem:InvokeServer(ohString1, ohNumber2, ohNumber3, true)
-                                    else
-                                        game:GetService("ReplicatedStorage").Packages.Knit.Services.DataService.RF.PurchaseMerchantItem:InvokeServer(ohString1, ohNumber2, ohNumber3)
-                                    end
-                                end)
-                                if not ok then
-                                    Rayfield:Notify({
-                                        Title = "Auto Buy Merchant Error",
-                                        Content = "Failed to buy " .. itemText .. ": " .. tostring(err),
-                                        Duration = 5
-                                    })
-                                end
-                                wait(0.1) -- Delay lebih cepat
-                            end
-                        end
-                    end
-                    wait(0.5) -- Delay loop utama lebih cepat
-                end
-            end)
-        else
-            Rayfield:Notify({
-                Title = "Auto Buy Merchant Disabled",
-                Content = "Auto Buy Merchant has been stopped",
-                Duration = 5
-            })
-        end
-    end
-})
-]]
-
 -- Membuat tab Setting
 local SettingTab = Window:CreateTab("Setting")
+
 -- Membuat section General Settings
 local GeneralSettingsSection = SettingTab:CreateSection("General Settings")
+
 -- Anti AFK
 local AutoAntiAFKEnabled = true
 local AutoAntiAFKToggle = SettingTab:CreateToggle({
@@ -1003,15 +766,17 @@ local AutoAntiAFKToggle = SettingTab:CreateToggle({
         end
     end
 })
+
 -- Aktifkan Anti AFK
 local vu = game:GetService("VirtualUser")
 game:GetService("Players").LocalPlayer.Idled:Connect(function()
     if AutoAntiAFKEnabled then
         vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-        wait(1)
+        task.wait(1)
         vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
     end
 end)
+
 -- Auto Rejoin
 local AutoRejoinEnabled = true
 local AutoRejoinToggle = SettingTab:CreateToggle({
@@ -1026,13 +791,13 @@ local AutoRejoinToggle = SettingTab:CreateToggle({
                 Content = "Auto rejoin on disconnect activated",
                 Duration = 5
             })
-            spawn(function()
+            task.spawn(function()
                 while AutoRejoinEnabled do
                     local player = game:GetService("Players").LocalPlayer
-                    local success, err = pcall(function()
+                    local ok, isAlive = pcall(function()
                         return player.Character and player.Character.Parent ~= nil
                     end)
-                    if not success or not player.Character or player.Character.Parent == nil then
+                    if not ok or not isAlive then
                         Rayfield:Notify({
                             Title = "Auto Rejoin",
                             Content = "Detected disconnect, attempting to rejoin...",
@@ -1048,9 +813,9 @@ local AutoRejoinToggle = SettingTab:CreateToggle({
                                 Duration = 5
                             })
                         end
-                        wait(60)
+                        task.wait(60)
                     end
-                    wait(10)
+                    task.wait(10)
                 end
             end)
         else
@@ -1062,14 +827,17 @@ local AutoRejoinToggle = SettingTab:CreateToggle({
         end
     end
 })
+
 -- Membuat section Player
 local PlayerSection = SettingTab:CreateSection("Player")
+
 -- Variabel untuk Speed
 local customSpeed = 50
-local defaultPlayerSpeed = 16 -- Asumsi default WalkSpeed
-local defaultPetSpeed = 16 -- Asumsi default untuk pets
+local defaultPlayerSpeed = 16
+local defaultPetSpeed = 16
 local AutoSpeedEnabled = false
 local autoSpeedThread = nil
+
 -- Input untuk Speed
 local SpeedInput = SettingTab:CreateInput({
     Name = "Speed",
@@ -1085,6 +853,7 @@ local SpeedInput = SettingTab:CreateInput({
         })
     end
 })
+
 -- Toggle untuk Activate Speed
 local ActivateSpeedToggle = SettingTab:CreateToggle({
     Name = "Activate Speed",
@@ -1102,7 +871,7 @@ local ActivateSpeedToggle = SettingTab:CreateToggle({
                 Content = "Speed set to " .. tostring(customSpeed),
                 Duration = 5
             })
-            autoSpeedThread = spawn(function()
+            autoSpeedThread = task.spawn(function()
                 while AutoSpeedEnabled do
                     local character = player.Character
                     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -1123,7 +892,7 @@ local ActivateSpeedToggle = SettingTab:CreateToggle({
                             end
                         end
                     end
-                    wait(0.1)
+                    task.wait(0.1)
                 end
               
                 -- Kembalikan ke default saat dimatikan
@@ -1155,9 +924,11 @@ local ActivateSpeedToggle = SettingTab:CreateToggle({
         end
     end
 })
--- Aktifkan Anti AFK dan Auto Rejoin
+
+-- Aktifkan Anti AFK dan Auto Rejoin saat load
 AutoAntiAFKToggle:Set(true)
 AutoRejoinToggle:Set(true)
+
 Rayfield:Notify({
     Title = "Script Loaded",
     Content = gameName .. " script has been loaded successfully!",
