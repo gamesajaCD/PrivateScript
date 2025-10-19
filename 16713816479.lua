@@ -327,14 +327,15 @@ local AutoMiningToggle = MainTab:CreateToggle({
 -- Membuat section Fish
 local FishSection = MainTab:CreateSection("Fish Features")
 
--- Fungsi untuk mendapatkan list zones
+-- Fungsi untuk mendapatkan list zones (dengan display user-friendly)
 local function getZoneList()
     local zoneList = {}
     local fishFolder = game:GetService("ReplicatedStorage").Assets:FindFirstChild("Fish")
     if fishFolder then
         for _, zone in ipairs(fishFolder:GetChildren()) do
             if zone.Name ~= "NOT USED" then
-                table.insert(zoneList, zone.Name)
+                -- Asumsi zone.Name adalah "1", "2", dll. Buat display "Zone 1", "Zone 2"
+                table.insert(zoneList, "Zone " .. zone.Name)
             end
         end
     end
@@ -342,7 +343,14 @@ local function getZoneList()
 end
 
 local zoneList = getZoneList()
-local selectedZone = zoneList[1] or "1"
+local selectedZone = zoneList[1] or "Zone 1"
+
+-- Fungsi helper untuk parse zoneId dari selectedZone (misal "Zone 1" -> 1)
+local function getZoneIdFromSelected(selected)
+    local zoneIdStr = string.match(selected, "%d+")  -- Ekstrak angka pertama (1 dari "Zone 1")
+    local zoneId = tonumber(zoneIdStr)
+    return zoneId
+end
 
 -- Dropdown untuk Zone
 local ZoneDropdown = MainTab:CreateDropdown({
@@ -352,11 +360,20 @@ local ZoneDropdown = MainTab:CreateDropdown({
     Flag = "ZoneDropdownFish",
     Callback = function(Option)
         selectedZone = (typeof(Option) == "table") and Option[1] or Option
-        Rayfield:Notify({
-            Title = "Zone Selected",
-            Content = "Selected Zone: " .. tostring(selectedZone),
-            Duration = 5
-        })
+        local zoneId = getZoneIdFromSelected(selectedZone)
+        if zoneId then
+            Rayfield:Notify({
+                Title = "Zone Selected",
+                Content = "Selected Zone: " .. tostring(selectedZone) .. " (ID: " .. tostring(zoneId) .. ")",
+                Duration = 5
+            })
+        else
+            Rayfield:Notify({
+                Title = "Zone Error",
+                Content = "Invalid zone selected: " .. tostring(selectedZone),
+                Duration = 5
+            })
+        end
     end
 })
 
@@ -366,17 +383,29 @@ local autoFishThread = nil
 
 -- Toggle untuk Auto Fish
 local AutoFishToggle = MainTab:CreateToggle({
-    Name = "Auto Fishb",
+    Name = "Auto Fishsa",
     CurrentValue = false,
     Flag = "AutoFishToggle",
     Callback = function(Value)
         AutoFishEnabled = Value
         if Value then
+            local zoneId = getZoneIdFromSelected(selectedZone)
+            if not zoneId then
+                Rayfield:Notify({
+                    Title = "Auto Fish Error",
+                    Content = "Invalid zone ID for " .. selectedZone .. ". Please select a valid zone.",
+                    Duration = 5
+                })
+                AutoFishEnabled = false  -- Stop jika invalid
+                return
+            end
+            
             Rayfield:Notify({
                 Title = "Auto Fish Enabled",
-                Content = "Started auto fishing in zone " .. selectedZone,
+                Content = "Started auto fishing in zone " .. selectedZone .. " (ID: " .. tostring(zoneId) .. ")",
                 Duration = 5
             })
+            
             autoFishThread = spawn(function()
                 local replicatedStorage = game:GetService("ReplicatedStorage")
                 local workspace = game:GetService("Workspace")
@@ -385,8 +414,7 @@ local AutoFishToggle = MainTab:CreateToggle({
                 local castFishingRod = replicatedStorage.Packages.Knit.Services.FarmingService.RF.CastFishingRod
                 
                 while AutoFishEnabled do
-                    local zoneId = tonumber(selectedZone) -- Convert selectedZone to number for ZoneId
-                    local zoneFolder = fishFolder and fishFolder:FindFirstChild(selectedZone)
+                    local zoneFolder = fishFolder and fishFolder:FindFirstChild(tostring(zoneId))  -- Cari folder "1", bukan "Zone 1"
                     
                     if zoneFolder and fishPartsFolder then
                         -- Ambil daftar nama ikan di zona yang dipilih
@@ -395,7 +423,7 @@ local AutoFishToggle = MainTab:CreateToggle({
                             table.insert(fishNames, fish.Name)
                         end
                         
-                        -- Panggil CastFishingRod dengan parameter yang sesuai
+                        -- Panggil CastFishingRod untuk casting (pastikan ohNumber7 = zoneId)
                         pcall(function()
                             local ohNumber1 = 0.9900000000000007
                             local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
@@ -403,25 +431,30 @@ local AutoFishToggle = MainTab:CreateToggle({
                             local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.9402313232421875)
                             local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
                             local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, -0, 0.981970191, 0, 1, -0, -0.981970191, 0, 0.189035907)
-                            local ohNumber7 = zoneId
+                            local ohNumber7 = zoneId  -- Sekarang pasti number (1 untuk Zone 1, dll.)
+                            
+                            -- Debug: Notify parameter yang dikirim
+                            print("Casting with zoneId:", zoneId)  -- Untuk debug di console
+                            
                             castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
                             Rayfield:Notify({
                                 Title = "Auto Fish",
-                                Content = "Casting fishing rod in zone " .. selectedZone,
+                                Content = "Casting fishing rod in zone " .. selectedZone .. " (ID: " .. tostring(zoneId) .. ")",
                                 Duration = 3
                             })
                         end)
                         
-                        -- Tunggu 5 detik untuk memungkinkan fish diproses oleh game
-                        wait(5)
+                        -- Tunggu lebih lama untuk memungkinkan fish parts muncul (tune jika perlu)
+                        wait(6)  -- Naikkan dari 5 ke 6 detik untuk stabilitas
                         
-                        -- Cek dan proses fish parts yang cocok
+                        -- Cek dan proses fish parts yang cocok (ini akan "memindahkan" atau proses fish)
+                        local processedCount = 0
                         for _, part in ipairs(fishPartsFolder:GetChildren()) do
                             if not AutoFishEnabled then break end
                             local fishName = part:GetAttribute("FishName")
                             local partZoneId = part:GetAttribute("ZoneId")
                             if fishName and partZoneId and table.find(fishNames, fishName) and partZoneId == zoneId then
-                                -- Panggil CastFishingRod lagi untuk memproses/mindahkan fish
+                                -- Panggil CastFishingRod lagi untuk proses fish (pindahkan atau collect)
                                 pcall(function()
                                     local ohNumber1 = 0.9900000000000007
                                     local ohVector32 = Vector3.new(-4068.049072265625, -6.796737194061279, -10.218384742736816)
@@ -429,25 +462,38 @@ local AutoFishToggle = MainTab:CreateToggle({
                                     local ohVector34 = Vector3.new(-4077.1298828125, 2.1082305908203125, -1.9402313232421875)
                                     local ohVector35 = Vector3.new(-4077.1298828125, -15.577600479125977, -1.9402313232421875)
                                     local ohCFrame6 = CFrame.new(-4077.12964, -15.5775986, -1.94043732, 0.189035907, -0, 0.981970191, 0, 1, -0, -0.981970191, 0, 0.189035907)
-                                    local ohNumber7 = zoneId
+                                    local ohNumber7 = zoneId  -- Gunakan zoneId yang valid
+                                    
+                                    print("Processing fish:", fishName, "in zoneId:", zoneId)  -- Debug
+                                    
                                     castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
                                     Rayfield:Notify({
                                         Title = "Fish Processed",
-                                        Content = "Processed " .. fishName .. " in zone " .. selectedZone,
+                                        Content = "Processed " .. fishName .. " in zone " .. selectedZone .. " (moved/collected)",
                                         Duration = 3
                                     })
+                                    processedCount = processedCount + 1
                                 end)
-                                wait(0.1) -- Delay per fish
+                                wait(0.5)  -- Delay lebih panjang per fish untuk hindari rate limit
                             end
+                        end
+                        
+                        if processedCount > 0 then
+                            Rayfield:Notify({
+                                Title = "Cycle Complete",
+                                Content = "Processed " .. tostring(processedCount) .. " fish in " .. selectedZone,
+                                Duration = 4
+                            })
                         end
                     else
                         Rayfield:Notify({
                             Title = "Auto Fish Warning",
-                            Content = "No zone folder or FishParts found for zone " .. selectedZone,
+                            Content = "No zone folder or FishParts found for zone ID " .. tostring(zoneId),
                             Duration = 5
                         })
+                        break  -- Stop loop jika zona invalid
                     end
-                    wait(1) -- Delay loop utama
+                    wait(2)  -- Delay loop utama (naikkan dari 1 untuk stabilitas)
                 end
             end)
         else
@@ -456,6 +502,10 @@ local AutoFishToggle = MainTab:CreateToggle({
                 Content = "Auto Fish has been stopped",
                 Duration = 5
             })
+            -- Clean up thread jika ada
+            if autoFishThread then
+                spawn(function() autoFishThread = nil end)
+            end
         end
     end
 })
