@@ -353,7 +353,7 @@ local zoneList, zoneNameToId = getZoneData()
 local selectedZoneName = zoneList[1] or "1"
 local selectedZoneId = zoneNameToId[selectedZoneName] or parseZoneIdFromName(selectedZoneName) or 1
 -- Dropdown untuk Zone
-local ZoneDropdown = FishSection:CreateDropdown({
+local FishZoneDropdown = FishSection:CreateDropdown({
     Name = "Select Zone",
     Options = zoneList,
     CurrentOption = selectedZoneName,
@@ -518,7 +518,7 @@ local AutoFishToggle = FishSection:CreateToggle({
     end
 })
 -- Update daftar ikan yang valid saat zone berubah
-ZoneDropdown:OnChanged(function()
+FishZoneDropdown:OnChanged(function()
     refreshAllowedFishNames()
 end)
 
