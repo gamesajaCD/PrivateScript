@@ -394,7 +394,7 @@ local AutoFishToggle = MainTab:CreateToggle({
                     pcall(function()
                         castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
                     end)
-                    task.wait(3) -- jeda agar tidak terlalu spam
+                    task.wait(6) -- jeda agar tidak terlalu spam
                 end
             end)
         else
