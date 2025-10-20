@@ -140,83 +140,148 @@ local TreeZoneDropdown = MainTab:CreateDropdown({
 })
 
 -- =========================
--- Utils (khusus Tree/Stone)
+-- Utils
 -- =========================
-local RS_TS = game:GetService("ReplicatedStorage")
-local Players_TS = game:GetService("Players")
-local LocalPlayer_TS = Players_TS.LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
--- Remote “klik” breakable (agar drop keluar)
-local function getBreakableClickedRemote()
-    local Packages = RS_TS:FindFirstChild("Packages")
+-- Remote getter
+local function getFarmingRF()
+    local Packages = RS:FindFirstChild("Packages")
     local Knit = Packages and Packages:FindFirstChild("Knit")
     local Services = Knit and Knit:FindFirstChild("Services")
     local FarmingService = Services and Services:FindFirstChild("FarmingService")
     local RF = FarmingService and FarmingService:FindFirstChild("RF")
-    local Remote = RF and RF:FindFirstChild("BreakableClicked")
-    if not Remote then
+    -- Lazy wait kalau belum replicate
+    if not RF then
         local ok
-        ok, Remote = pcall(function()
-            local p = RS_TS:WaitForChild("Packages", 5)
+        ok, RF = pcall(function()
+            local p = RS:WaitForChild("Packages", 5)
             local k = p and p:WaitForChild("Knit", 5)
             local s = k and k:WaitForChild("Services", 5)
             local f = s and s:WaitForChild("FarmingService", 5)
-            local rf = f and f:WaitForChild("RF", 5)
-            return rf and rf:WaitForChild("BreakableClicked", 5)
+            return f and f:WaitForChild("RF", 5)
         end)
     end
-    return Remote
+    return RF
 end
 
--- Parse angka zone dari nama ("1", "Zone 2", dll)
+local function getRemotes()
+    local RF = getFarmingRF()
+    if not RF then return nil end
+    return {
+        BreakableClicked = RF:FindFirstChild("BreakableClicked"),
+        DamageTree = RF:FindFirstChild("DamageTree"),
+        DamageOre = RF:FindFirstChild("DamageOre"),
+    }
+end
+
+-- Ambil angka zone dari nama "1" / "Zone 2" / dll
 local function toZoneNumber(z)
     if type(z) == "number" then return z end
     local s = tostring(z or "")
     local num = s:match("%d+")
-    return tonumber(num) or 1
+    return tonumber(num) or tonumber(s) or 1
 end
 
--- Ambil ID unik breakable (prioritas PosId; fallback Name hex 32; lalu Name biasa)
+-- Ambil ID unik breakable
 local function getBreakableId(model)
     if not model then return nil end
-    local pid = model:GetAttribute("PosId")
-    if pid and pid ~= "" then
-        return tostring(pid)
+    -- Prioritas atribut yang umum dipakai
+    local keys = {"PosId", "BreakableId", "Id", "GUID", "Guid"}
+    for _, key in ipairs(keys) do
+        local v = model:GetAttribute(key)
+        if v ~= nil and tostring(v) ~= "" then
+            return tostring(v)
+        end
     end
-    if model.Name and model.Name:match("^%x+$") and #model.Name == 32 then
-        return model.Name
+    -- Coba child StringValue bernama "Id"
+    local idValue = model:FindFirstChild("Id")
+    if idValue and idValue:IsA("StringValue") and idValue.Value ~= "" then
+        return idValue.Value
     end
+    -- Fallback: nama model (kalau 32 hex juga valid)
     return model.Name
 end
 
 -- Teleport aman ke atas target model
 local function tpToModel(model, yOffset)
     yOffset = yOffset or 5
-    local char = LocalPlayer_TS.Character
+    local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not (root and model) then return end
-    local pivotCF
-    local ok = pcall(function()
-        pivotCF = model:GetPivot()
+    local ok, pivotCF = pcall(function()
+        return model:GetPivot()
     end)
     if ok and pivotCF then
         root.CFrame = pivotCF * CFrame.new(0, yOffset, 0)
-    elseif model.PrimaryPart then
-        root.CFrame = model.PrimaryPart.CFrame * CFrame.new(0, yOffset, 0)
     else
-        local anyPart = model:FindFirstChildWhichIsA("BasePart", true)
-        if anyPart then
-            root.CFrame = anyPart.CFrame * CFrame.new(0, yOffset, 0)
+        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+        if part then
+            root.CFrame = part.CFrame * CFrame.new(0, yOffset, 0)
         end
     end
 end
 
--- Klik server-side (aman + antisipasi error)
-local function serverClick(remote, zoneNum, breakableId)
-    if not remote or not zoneNum or not breakableId then return end
-    pcall(function()
-        remote:InvokeServer(zoneNum, tostring(breakableId))
-    end)
+-- Attack helper: klik + damage (kombinasi agar drop keluar)
+local function attackTree(remotes, zoneNameStr, zoneNum, treeModel)
+    local id = getBreakableId(treeModel)
+    if not id then return end
+    -- spam kombinasi supaya server hit + trigger drop
+    while treeModel.Parent do
+        if remotes.BreakableClicked then
+            pcall(function()
+                remotes.BreakableClicked:InvokeServer(zoneNum, tostring(id))
+            end)
+        end
+        if remotes.DamageTree then
+            pcall(function()
+                remotes.DamageTree:InvokeServer(zoneNameStr, tostring(id), true)
+            end)
+        end
+        task.wait(0.08)
+    end
+end
+
+local function attackOre(remotes, zoneNameStr, zoneNum, oreModel)
+    local id = getBreakableId(oreModel)
+    if not id then return end
+    while oreModel.Parent do
+        if remotes.BreakableClicked then
+            pcall(function()
+                remotes.BreakableClicked:InvokeServer(zoneNum, tostring(id))
+            end)
+        end
+        if remotes.DamageOre then
+            pcall(function()
+                remotes.DamageOre:InvokeServer(zoneNameStr, tostring(id), 1)
+            end)
+        end
+        task.wait(0.08)
+    end
+end
+
+-- Cari folder zone by name atau id
+local function findZoneFolder(zonesFolder, zoneName, zoneNum)
+    if not zonesFolder then return nil end
+    -- 1) by exact name
+    local z = zonesFolder:FindFirstChild(tostring(zoneName))
+    if z then return z end
+    -- 2) by numeric string
+    z = zonesFolder:FindFirstChild(tostring(zoneNum))
+    if z then return z end
+    -- 3) by "Zone X"
+    z = zonesFolder:FindFirstChild("Zone " .. tostring(zoneNum))
+    if z then return z end
+    -- 4) scan by attribute "ZoneId"
+    for _, child in ipairs(zonesFolder:GetChildren()) do
+        local zid = child:GetAttribute("ZoneId")
+        if zid and tonumber(zid) == tonumber(zoneNum) then
+            return child
+        end
+    end
+    return nil
 end
 
 -- =========================
@@ -234,71 +299,37 @@ local AutoTreeToggle = MainTab:CreateToggle({
         if Value then
             Rayfield:Notify({
                 Title = "Auto Tree Enabled",
-                Content = "Menggunakan BreakableClicked agar drop keluar",
+                Content = "Klik + Damage dikombinasikan agar drop keluar",
                 Duration = 5
             })
             autoTreeThread = task.spawn(function()
-                -- Tunggu karakter siap (hindari error HRP nil)
-                if not LocalPlayer_TS.Character then
-                    LocalPlayer_TS.CharacterAdded:Wait()
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:WaitForChild("Zones", 5)
+                local remotes = getRemotes()
+                if not remotes then
+                    Rayfield:Notify({
+                        Title = "Auto Tree Error",
+                        Content = "Remotes FarmingService.RF tidak ditemukan",
+                        Duration = 5
+                    })
+                    return
                 end
-                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
-
                 while AutoTreeEnabled do
                     local zoneName = selectedTreeZone or "1"
                     local zoneNum = toZoneNumber(zoneName)
-                    local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(tostring(zoneName))
-                    local treesFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
-                    local BreakableClicked = getBreakableClickedRemote()
+                    local zoneFolder = findZoneFolder(zonesFolder, zoneName, zoneNum)
+                    local treesFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
 
-                    if BreakableClicked and treesFolder then
-                        -- Urutkan berdasarkan jarak ke player biar efisien
-                        local char = LocalPlayer_TS.Character
-                        local root = char and char:FindFirstChild("HumanoidRootPart")
-                        local list = {}
+                    if treesFolder then
                         for _, tree in ipairs(treesFolder:GetChildren()) do
-                            if tree:IsA("Model") then
-                                local anyPart = tree.PrimaryPart or tree:FindFirstChildWhichIsA("BasePart", true)
-                                local dist = (root and anyPart) and (root.Position - anyPart.Position).Magnitude or math.huge
-                                table.insert(list, {m = tree, d = dist})
-                            end
-                        end
-                        table.sort(list, function(a, b) return a.d < b.d end)
-
-                        for _, item in ipairs(list) do
                             if not AutoTreeEnabled then break end
-                            local tree = item.m
-                            if tree and tree.Parent then
-                                local bid = getBreakableId(tree)
-                                if bid then
-                                    tpToModel(tree, 5)
-                                    -- Klik sampai hilang (dengan timeout safety)
-                                    local t0 = os.clock()
-                                    while AutoTreeEnabled and tree.Parent do
-                                        serverClick(BreakableClicked, zoneNum, bid)
-                                        task.wait(0.07)
-                                        if os.clock() - t0 > 20 then -- timeout 20s per tree
-                                            break
-                                        end
-                                    end
-                                end
+                            if tree:IsA("Model") then
+                                tpToModel(tree, 5)
+                                attackTree(remotes, tostring(zoneName), zoneNum, tree)
+                                task.wait(0.05)
                             end
                         end
                     else
-                        if not BreakableClicked then
-                            Rayfield:Notify({
-                                Title = "Auto Tree Warning",
-                                Content = "Remote BreakableClicked tidak ditemukan.",
-                                Duration = 4
-                            })
-                        else
-                            Rayfield:Notify({
-                                Title = "Auto Tree Warning",
-                                Content = "BREAKABLE_TREES tidak ditemukan di zone " .. tostring(zoneName),
-                                Duration = 4
-                            })
-                        end
-                        task.wait(1)
+                        task.wait(0.5)
                     end
 
                     task.wait(0.2)
@@ -329,68 +360,37 @@ local AutoMiningToggle = MainTab:CreateToggle({
         if Value then
             Rayfield:Notify({
                 Title = "Auto Mining Enabled",
-                Content = "Menggunakan BreakableClicked agar drop keluar",
+                Content = "Klik + Damage dikombinasikan agar drop keluar",
                 Duration = 5
             })
             autoMiningThread = task.spawn(function()
-                if not LocalPlayer_TS.Character then
-                    LocalPlayer_TS.CharacterAdded:Wait()
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:WaitForChild("Zones", 5)
+                local remotes = getRemotes()
+                if not remotes then
+                    Rayfield:Notify({
+                        Title = "Auto Mining Error",
+                        Content = "Remotes FarmingService.RF tidak ditemukan",
+                        Duration = 5
+                    })
+                    return
                 end
-                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
-
                 while AutoMiningEnabled do
                     local zoneName = selectedTreeZone or "1"
                     local zoneNum = toZoneNumber(zoneName)
-                    local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(tostring(zoneName))
-                    local oresFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
-                    local BreakableClicked = getBreakableClickedRemote()
+                    local zoneFolder = findZoneFolder(zonesFolder, zoneName, zoneNum)
+                    local oresFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
 
-                    if BreakableClicked and oresFolder then
-                        local char = LocalPlayer_TS.Character
-                        local root = char and char:FindFirstChild("HumanoidRootPart")
-                        local list = {}
+                    if oresFolder then
                         for _, ore in ipairs(oresFolder:GetChildren()) do
-                            if ore:IsA("Model") then
-                                local anyPart = ore.PrimaryPart or ore:FindFirstChildWhichIsA("BasePart", true)
-                                local dist = (root and anyPart) and (root.Position - anyPart.Position).Magnitude or math.huge
-                                table.insert(list, {m = ore, d = dist})
-                            end
-                        end
-                        table.sort(list, function(a, b) return a.d < b.d end)
-
-                        for _, item in ipairs(list) do
                             if not AutoMiningEnabled then break end
-                            local ore = item.m
-                            if ore and ore.Parent then
-                                local bid = getBreakableId(ore)
-                                if bid then
-                                    tpToModel(ore, 5)
-                                    local t0 = os.clock()
-                                    while AutoMiningEnabled and ore.Parent do
-                                        serverClick(BreakableClicked, zoneNum, bid)
-                                        task.wait(0.07)
-                                        if os.clock() - t0 > 20 then -- timeout 20s per ore
-                                            break
-                                        end
-                                    end
-                                end
+                            if ore:IsA("Model") then
+                                tpToModel(ore, 5)
+                                attackOre(remotes, tostring(zoneName), zoneNum, ore)
+                                task.wait(0.05)
                             end
                         end
                     else
-                        if not BreakableClicked then
-                            Rayfield:Notify({
-                                Title = "Auto Mining Warning",
-                                Content = "Remote BreakableClicked tidak ditemukan.",
-                                Duration = 4
-                            })
-                        else
-                            Rayfield:Notify({
-                                Title = "Auto Mining Warning",
-                                Content = "BREAKABLE_ORES tidak ditemukan di zone " .. tostring(zoneName),
-                                Duration = 4
-                            })
-                        end
-                        task.wait(1)
+                        task.wait(0.5)
                     end
 
                     task.wait(0.2)
