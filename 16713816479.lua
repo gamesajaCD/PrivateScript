@@ -101,7 +101,7 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
 })
 
 -- =========================
--- Tree & Stone Features (Auto Click 1 detik, non-intrusif)
+-- Tree & Stone Features (Auto Click sudut kiri atas)
 -- =========================
 local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
 
@@ -123,7 +123,7 @@ end
 local treeZoneList = getTreeZoneList()
 local selectedTreeZone = treeZoneList[1] or "1"
 
--- Dropdown untuk Zone (Tree/Stone)
+-- Dropdown untuk Zone
 local TreeZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone",
     Options = treeZoneList,
@@ -134,19 +134,18 @@ local TreeZoneDropdown = MainTab:CreateDropdown({
         Rayfield:Notify({
             Title = "Zone Selected",
             Content = "Selected Zone: " .. tostring(selectedTreeZone),
-            Duration = 4
+            Duration = 3
         })
     end
 })
 
 -- =========================
--- Utils Auto Click (tidak mengganggu)
+-- Utils
 -- =========================
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local VIM = game:FindService("VirtualInputManager") or game:GetService("VirtualInputManager")
-local VU = game:GetService("VirtualUser")
+local VIM = game:GetService("VirtualInputManager") -- klik non-intrusif
 
 -- Cari zone folder dari berbagai kemungkinan nama
 local function findZoneFolder(zoneSel)
@@ -168,7 +167,7 @@ local function findZoneFolder(zoneSel)
     -- "Zone X"
     z = zonesFolder:FindFirstChild("Zone " .. tostring(zn))
     if z then return z end
-    -- by attr
+    -- by attribute ZoneId
     for _, c in ipairs(zonesFolder:GetChildren()) do
         local zid = c:GetAttribute("ZoneId")
         if zid and tonumber(zid) == zn then
@@ -178,27 +177,11 @@ local function findZoneFolder(zoneSel)
     return nil
 end
 
--- Pilih part target: primarypart, lalu part terbesar
-local function pickTargetPart(model)
-    if model.PrimaryPart then return model.PrimaryPart end
-    local best, bestMag = nil, -1
-    for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("BasePart") then
-            local sizeMag = d.Size.Magnitude
-            if sizeMag > bestMag then
-                bestMag = sizeMag
-                best = d
-            end
-        end
-    end
-    return best
-end
-
 -- Teleport aman ke atas target model
 local function tpToModel(model, yOffset)
     yOffset = yOffset or 5
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local root = char:WaitForChild("HumanoidRootPart", 5)
     if not (root and model) then return end
     local cf
     local ok, pivotCF = pcall(function() return model:GetPivot() end)
@@ -213,157 +196,116 @@ local function tpToModel(model, yOffset)
     end
 end
 
--- Hitung beberapa titik klik di permukaan part (center + offset) tanpa ubah kamera
-local function getClickScreenPoints(part)
-    local pts = {}
-    if not part then return pts end
-
-    local cf = part.CFrame
-    local size = part.Size
-    local right = cf.RightVector
-    local up = cf.UpVector
-
-    local worldPoints = {
-        part.Position, -- center
-        part.Position + right * (size.X * 0.25),
-        part.Position - right * (size.X * 0.25),
-        part.Position + up * (size.Y * 0.25),
-        part.Position - up * (size.Y * 0.25),
-    }
-
-    for _, wp in ipairs(worldPoints) do
-        local v = Camera:WorldToViewportPoint(wp)
-        if v and v.Z > 0 then
-            table.insert(pts, {x = v.X, y = v.Y})
-        end
-    end
-    return pts
-end
-
--- Simulasikan klik ke koordinat layar tertentu (satu klik)
-local function clickOnceXY(x, y)
-    if VIM then
+-- Klik di sudut kiri atas sampai target hilang
+local CLICK_X, CLICK_Y = 6, 6  -- sudut kiri atas (sedikit offset dari (0,0))
+local function clickTopLeftUntilGone(model, interval)
+    interval = interval or 0.03 -- cepat tapi tidak terlalu spam
+    while model and model.Parent do
+        -- kirim klik kiri di (CLICK_X, CLICK_Y)
         pcall(function()
-            VIM:SendMouseButtonEvent(x, y, true, 0, game, 0)  -- MouseButton1 down
-            VIM:SendMouseButtonEvent(x, y, false, 0, game, 0) -- MouseButton1 up
+            VIM:SendMouseButtonEvent(CLICK_X, CLICK_Y, true, 0, game, 0)  -- down
+            VIM:SendMouseButtonEvent(CLICK_X, CLICK_Y, false, 0, game, 0) -- up
         end)
-    else
-        pcall(function()
-            VU:Button1Down(Vector2.new(x, y), Camera.CFrame)
-            task.wait(0.01)
-            VU:Button1Up(Vector2.new(x, y), Camera.CFrame)
-        end)
+        task.wait(interval)
     end
 end
 
--- Klik model selama 1 detik (non-intrusif)
-local function autoClickModel1s(model)
-    local t0 = tick()
-    while model and model.Parent and (tick() - t0) < 1.0 do
-        local part = pickTargetPart(model)
-        if not part then break end
-        local pts = getClickScreenPoints(part)
-        if #pts == 0 then
-            -- tidak on-screen, skip sebentar (tanpa ubah kamera)
-            task.wait(0.05)
-        else
-            -- klik ringan di beberapa titik, total ~10-12 klik per detik
-            for _, p in ipairs(pts) do
-                clickOnceXY(p.x, p.y)
-                if (tick() - t0) >= 1.0 then break end
-                task.wait(0.08)
-            end
-        end
-    end
+-- Ambil folder target
+local function getTreesFolder()
+    local zoneFolder = findZoneFolder(selectedTreeZone)
+    return zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
+end
+
+local function getOresFolder()
+    local zoneFolder = findZoneFolder(selectedTreeZone)
+    return zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
 end
 
 -- =========================
--- Auto Tree (Auto Click 1 detik)
+-- Auto Tree (Top-left Click)
 -- =========================
 local AutoTreeEnabled = false
 local autoTreeThread = nil
 
 local AutoTreeToggle = MainTab:CreateToggle({
-    Name = "Auto Tree (Auto Click 1s)",
+    Name = "Auto Tree (Top-left Click)",
     CurrentValue = false,
-    Flag = "AutoTreeToggle_AutoClick1s",
+    Flag = "AutoTreeToggle_TopLeft",
     Callback = function(Value)
         AutoTreeEnabled = Value
         if Value then
             Rayfield:Notify({
                 Title = "Auto Tree Enabled",
-                Content = "Mode Auto Click non-intrusif, 1 detik per tree",
-                Duration = 5
+                Content = "Teleport -> Klik sudut kiri atas sampai tree hilang",
+                Duration = 4
             })
             autoTreeThread = task.spawn(function()
                 while AutoTreeEnabled do
-                    local zoneFolder = findZoneFolder(selectedTreeZone)
-                    local treesFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
+                    local treesFolder = getTreesFolder()
                     if treesFolder then
                         for _, tree in ipairs(treesFolder:GetChildren()) do
                             if not AutoTreeEnabled then break end
                             if tree:IsA("Model") then
                                 tpToModel(tree, 5)
-                                autoClickModel1s(tree)
+                                clickTopLeftUntilGone(tree, 0.03)
                             end
                         end
                     else
-                        task.wait(0.5)
+                        task.wait(0.4)
                     end
-                    task.wait(0.15)
+                    task.wait(0.1)
                 end
             end)
         else
             Rayfield:Notify({
                 Title = "Auto Tree Disabled",
                 Content = "Dimatikan",
-                Duration = 4
+                Duration = 3
             })
         end
     end
 })
 
 -- =========================
--- Auto Mining (Auto Click 1 detik)
+-- Auto Mining (Top-left Click)
 -- =========================
 local AutoMiningEnabled = false
 local autoMiningThread = nil
 
 local AutoMiningToggle = MainTab:CreateToggle({
-    Name = "Auto Mining (Auto Click 1s)",
+    Name = "Auto Mining (Top-left Click)",
     CurrentValue = false,
-    Flag = "AutoMiningToggle_AutoClick1s",
+    Flag = "AutoMiningToggle_TopLeft",
     Callback = function(Value)
         AutoMiningEnabled = Value
         if Value then
             Rayfield:Notify({
                 Title = "Auto Mining Enabled",
-                Content = "Mode Auto Click non-intrusif, 1 detik per ore",
-                Duration = 5
+                Content = "Teleport -> Klik sudut kiri atas sampai ore hilang",
+                Duration = 4
             })
             autoMiningThread = task.spawn(function()
                 while AutoMiningEnabled do
-                    local zoneFolder = findZoneFolder(selectedTreeZone)
-                    local oresFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
+                    local oresFolder = getOresFolder()
                     if oresFolder then
                         for _, ore in ipairs(oresFolder:GetChildren()) do
                             if not AutoMiningEnabled then break end
                             if ore:IsA("Model") then
                                 tpToModel(ore, 5)
-                                autoClickModel1s(ore)
+                                clickTopLeftUntilGone(ore, 0.03)
                             end
                         end
                     else
-                        task.wait(0.5)
+                        task.wait(0.4)
                     end
-                    task.wait(0.15)
+                    task.wait(0.1)
                 end
             end)
         else
             Rayfield:Notify({
                 Title = "Auto Mining Disabled",
                 Content = "Dimatikan",
-                Duration = 4
+                Duration = 3
             })
         end
     end
