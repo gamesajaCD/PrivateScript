@@ -351,7 +351,7 @@ local function computeCastParamsAheadOfPlayer()
     local forward = cf.LookVector
     local up = cf.UpVector
 
-    local castDistance = 18 -- jarak lempar ke depan player (ubah sesuai kebutuhan)
+    local castDistance = 20 -- jarak lempar ke depan player (ubah sesuai kebutuhan)
     local origin = hrp.Position + up * 1.5 + forward * 2
     local p2 = origin + forward * 6 + up * 2.5
     local p3 = origin + forward * 12 + up * 4
