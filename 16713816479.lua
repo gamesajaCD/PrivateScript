@@ -105,351 +105,178 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
 -- =========================
 MainTab:CreateSection("Tree & Stone Features")
 
--- Services khusus section ini
-local TS_RS = game:GetService("ReplicatedStorage")
-local TS_Players = game:GetService("Players")
-local TS_WS = game:GetService("Workspace")
-local TS_LP = TS_Players.LocalPlayer
-
 -- Ambil list Zone dari workspace
-local function TS_GetZoneList()
-    local zones = {}
-    local zonesFolder = TS_WS.__WORLD and TS_WS.__WORLD.MAP and TS_WS.__WORLD.MAP:FindFirstChild("Zones")
+local function getTreeZoneList()
+    local zoneList = {}
+    local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
     if zonesFolder then
-        for _, z in ipairs(zonesFolder:GetChildren()) do
-            table.insert(zones, z.Name)
+        for _, zone in ipairs(zonesFolder:GetChildren()) do
+            table.insert(zoneList, zone.Name)
         end
     end
-    if #zones == 0 then zones = {"1"} end
-    return zones
+    if #zoneList == 0 then
+        zoneList = {"1"} -- fallback
+    end
+    return zoneList
 end
 
-local TS_ZoneList = TS_GetZoneList()
-local TS_SelectedZone = TS_ZoneList[1] or "1"
+local treeZoneList = getTreeZoneList()
+local selectedTreeZone = treeZoneList[1] or "1"
 
 -- Dropdown untuk Zone (Tree/Stone)
-local TS_ZoneDropdown = MainTab:CreateDropdown({
+local TreeZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone",
-    Options = TS_ZoneList,
-    CurrentOption = TS_SelectedZone,
-    Flag = "TS_ZoneDropdown_Unique",
+    Options = treeZoneList,
+    CurrentOption = selectedTreeZone,
+    Flag = "ZoneDropdown_TreeStone",
     Callback = function(Option)
-        TS_SelectedZone = (typeof(Option) == "table") and Option[1] or Option
+        selectedTreeZone = (typeof(Option) == "table") and Option[1] or Option
         Rayfield:Notify({
             Title = "Zone Selected",
-            Content = "Selected Zone: " .. tostring(TS_SelectedZone),
+            Content = "Selected Zone: " .. tostring(selectedTreeZone),
             Duration = 4
         })
     end
 })
 
--- Utils
-local function TS_ZoneToNumber(z)
+-- =========================
+-- Utils + Remotes
+-- =========================
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
+
+local RF = RS.Packages
+    and RS.Packages.Knit
+    and RS.Packages.Knit.Services
+    and RS.Packages.Knit.Services.FarmingService
+    and RS.Packages.Knit.Services.FarmingService.RF
+
+local DamageTree = RF and RF:FindFirstChild("DamageTree")
+local DamageOre  = RF and RF:FindFirstChild("DamageOre")
+local BreakableClicked = RF and RF:FindFirstChild("BreakableClicked")
+
+local function toZoneNumber(z)
     if type(z) == "number" then return z end
     local s = tostring(z or "")
-    return tonumber(s:match("%d+")) or tonumber(s) or 1
+    local num = s:match("%d+")
+    return tonumber(num) or tonumber(s) or 1
 end
 
-local function TS_FindZoneFolder(zonesFolder, zoneName)
-    if not zonesFolder then return nil end
-    local zoneNum = TS_ZoneToNumber(zoneName)
-    -- by exact name
-    local z = zonesFolder:FindFirstChild(tostring(zoneName))
-    if z then return z end
-    -- by numeric string
-    z = zonesFolder:FindFirstChild(tostring(zoneNum))
-    if z then return z end
-    -- by "Zone X"
-    z = zonesFolder:FindFirstChild("Zone " .. tostring(zoneNum))
-    if z then return z end
-    -- by attribute ZoneId
-    for _, child in ipairs(zonesFolder:GetChildren()) do
-        local zid = child:GetAttribute("ZoneId")
-        if zid and tonumber(zid) == zoneNum then
-            return child
-        end
+local function toZoneStringId(z)
+    return tostring(toZoneNumber(z))
+end
+
+local function getPosId(model)
+    -- Game kamu pakai PosId (contoh: "5")
+    local pid = model and model:GetAttribute("PosId")
+    if pid ~= nil and tostring(pid) ~= "" then
+        return tostring(pid)
+    end
+    -- fallback: kalau nama murni angka, pakai itu
+    if model and model.Name and model.Name:match("^%d+$") then
+        return model.Name
     end
     return nil
 end
 
-local function TS_TpToModel(model, yOffset)
+local function tpToModel(model, yOffset)
     yOffset = yOffset or 5
-    local char = TS_LP.Character
+    local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not (root and model) then return end
     local ok, pivot = pcall(function() return model:GetPivot() end)
-    if ok and pivot then
-        root.CFrame = pivot * CFrame.new(0, yOffset, 0)
-    else
-        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-        if part then root.CFrame = part.CFrame * CFrame.new(0, yOffset, 0) end
+    local cf = ok and pivot or (model.PrimaryPart and model.PrimaryPart.CFrame)
+    if not cf then
+        local any = model:FindFirstChildWhichIsA("BasePart", true)
+        cf = any and any.CFrame
+    end
+    if cf then
+        root.CFrame = cf * CFrame.new(0, yOffset, 0)
     end
 end
 
--- Cari model Tree/Ore by PosId string
-local function TS_FindBreakableModelByPosId(zoneFolder, kindFolderName, posIdStr)
-    local assets = zoneFolder and zoneFolder:FindFirstChild("Assets")
-    local container = assets and assets:FindFirstChild(kindFolderName)
-    if not container then return nil end
-    for _, m in ipairs(container:GetChildren()) do
-        if m:IsA("Model") then
-            local pid = m:GetAttribute("PosId")
-            if pid ~= nil and tostring(pid) == tostring(posIdStr) then
-                return m
-            end
-            -- fallback: nama model sama dengan PosId
-            if tostring(m.Name) == tostring(posIdStr) then
-                return m
-            end
+local function findZoneFolder(zonesFolder, zoneSel)
+    if not zonesFolder then return nil end
+    local zn = toZoneNumber(zoneSel)
+    -- urutan coba: "1" -> "Zone 1" -> by attribute ZoneId
+    local z = zonesFolder:FindFirstChild(tostring(zn)) or zonesFolder:FindFirstChild("Zone " .. tostring(zn))
+    if z then return z end
+    for _, child in ipairs(zonesFolder:GetChildren()) do
+        local zid = child:GetAttribute("ZoneId")
+        if zid and tonumber(zid) == zn then
+            return child
         end
     end
-    return nil
-end
-
--- Collect loot (backup via remote dan sentuh)
-local function TS_TouchCollectAround(pos, radius)
-    radius = radius or 35
-    local char = TS_LP.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
-    local function touch(part)
-        if typeof(firetouchinterest) == "function" and part and part:IsA("BasePart") then
-            pcall(function()
-                firetouchinterest(root, part, 0)
-                firetouchinterest(root, part, 1)
-            end)
-        end
-    end
-
-    for _, inst in ipairs(TS_WS:GetDescendants()) do
-        if inst:IsA("BasePart") then
-            local d = (inst.Position - pos).Magnitude
-            if d <= radius then
-                touch(inst)
-            end
-        end
-    end
-end
-
--- Remotes (FarmingService.RF)
-local function TS_GetRF()
-    local Packages = TS_RS:FindFirstChild("Packages")
-    local Knit = Packages and Packages:FindFirstChild("Knit")
-    local Services = Knit and Knit:FindFirstChild("Services")
-    local FarmingService = Services and Services:FindFirstChild("FarmingService")
-    local RF = FarmingService and FarmingService:FindFirstChild("RF")
-    if not RF then
-        local ok
-        ok, RF = pcall(function()
-            local p = TS_RS:WaitForChild("Packages", 5)
-            local k = p and p:WaitForChild("Knit", 5)
-            local s = k and k:WaitForChild("Services", 5)
-            local f = s and s:WaitForChild("FarmingService", 5)
-            return f and f:WaitForChild("RF", 5)
-        end)
-    end
-    return RF
-end
-
-local function TS_GetRemotes()
-    local RF = TS_GetRF()
-    if not RF then return nil end
-    return {
-        BreakableClicked = RF:FindFirstChild("BreakableClicked"),
-        DamageTree = RF:FindChild("DamageTree") or RF:FindFirstChild("DamageTree"),
-        DamageOre = RF:FindChild("DamageOre") or RF:FindFirstChild("DamageOre"),
-        GetCurrentTrees = RF:FindChild("GetCurrentTrees") or RF:FindFirstChild("GetCurrentTrees"),
-        GetCurrentOres = RF:FindChild("GetCurrentOres") or RF:FindFirstChild("GetCurrentOres"),
-        CollectLoot = RF:FindChild("CollectLoot") or RF:FindFirstChild("CollectLoot"),
-        CastPetBreakableAttack = RF:FindChild("CastPetBreakableAttack") or RF:FindFirstChild("CastPetBreakableAttack"),
-        EquipHandItem = RF:FindChild("EquipHandItem") or RF:FindFirstChild("EquipHandItem"),
-        GetActiveHeldItems = RF:FindChild("GetActiveHeldItems") or RF:FindFirstChild("GetActiveHeldItems"),
-    }
-end
-
--- Ambil PosId dari server list (lebih akurat daripada baca dari workspace)
-local function TS_GetServerPosIds(rem, kind, zoneNameStr)
-    local ids = {}
-    if kind == "TREE" and rem.GetCurrentTrees then
-        local ok, res = pcall(function()
-            return rem.GetCurrentTrees:InvokeServer(zoneNameStr)
-        end)
-        if ok and res then
-            -- Support list/dict bentuk apa pun
-            for k, v in pairs(res) do
-                if typeof(k) ~= "number" then
-                    table.insert(ids, tostring(k))
-                elseif typeof(v) == "table" and (v.PosId or v.posId) then
-                    table.insert(ids, tostring(v.PosId or v.posId))
-                else
-                    table.insert(ids, tostring(v))
-                end
-            end
-        end
-    elseif kind == "ORE" and rem.GetCurrentOres then
-        local ok, res = pcall(function()
-            return rem.GetCurrentOres:InvokeServer(zoneNameStr)
-        end)
-        if ok and res then
-            for k, v in pairs(res) do
-                if typeof(k) ~= "number" then
-                    table.insert(ids, tostring(k))
-                elseif typeof(v) == "table" and (v.PosId or v.posId) then
-                    table.insert(ids, tostring(v.PosId or v.posId))
-                else
-                    table.insert(ids, tostring(v))
-                end
-            end
-        end
-    end
-    return ids
-end
-
--- Core serang Tree/Ore sesuai signature yang kamu kirim
-local function TS_AttackTree(rem, zoneFolder, posIdStr)
-    local zoneNameStr = zoneFolder.Name
-    local zoneNum = TS_ZoneToNumber(zoneNameStr)
-    local model = TS_FindBreakableModelByPosId(zoneFolder, "BREAKABLE_TREES", posIdStr)
-    if model then
-        TS_TpToModel(model, 5)
-    end
-    -- spam kombinasi
-    while (model and model.Parent) or (not model) do
-        -- 1) DamageTree(zoneNameStr, posIdStr, true)
-        if rem.DamageTree then
-            pcall(function()
-                rem.DamageTree:InvokeServer(zoneNameStr, tostring(posIdStr), true)
-            end)
-        end
-        -- 2) BreakableClicked(zoneNum, posIdStr)
-        if rem.BreakableClicked then
-            pcall(function()
-                rem.BreakableClicked:InvokeServer(zoneNum, tostring(posIdStr))
-            end)
-        end
-        -- 3) Opsional: Serang pakai pet (beberapa server butuh trigger ini)
-        if rem.CastPetBreakableAttack then
-            pcall(function()
-                rem.CastPetBreakableAttack:InvokeServer(zoneNameStr, tostring(posIdStr))
-            end)
-        end
-        task.wait(0.08)
-        -- Keluar jika model hilang
-        if model and not model.Parent then break end
-        -- Jika model awalnya nil, batasi durasi serang (biar nggak infinite)
-        if not model then break end
-    end
-    -- CollectLoot (signature tidak pasti, jadi coba beberapa bentuk umum)
-    if rem.CollectLoot then
-        pcall(function() rem.CollectLoot:InvokeServer() end)
-        pcall(function() rem.CollectLoot:InvokeServer(zoneNum, tostring(posIdStr)) end)
-        pcall(function() rem.CollectLoot:InvokeServer(zoneNameStr, tostring(posIdStr)) end)
-    end
-    -- Sentuh loot di sekitar (backup)
-    if model then
-        local ok, piv = pcall(function() return model:GetPivot() end)
-        if ok and piv then
-            TS_TouchCollectAround(piv.Position, 35)
-        end
-    end
-end
-
-local function TS_AttackOre(rem, zoneFolder, posIdStr)
-    local zoneNameStr = zoneFolder.Name
-    local zoneNum = TS_ZoneToNumber(zoneNameStr)
-    local model = TS_FindBreakableModelByPosId(zoneFolder, "BREAKABLE_ORES", posIdStr)
-    if model then
-        TS_TpToModel(model, 5)
-    end
-    while (model and model.Parent) or (not model) do
-        -- 1) DamageOre(zoneNameStr, posIdStr, 1)
-        if rem.DamageOre then
-            pcall(function()
-                rem.DamageOre:InvokeServer(zoneNameStr, tostring(posIdStr), 1)
-            end)
-        end
-        -- 2) BreakableClicked(zoneNum, posIdStr)
-        if rem.BreakableClicked then
-            pcall(function()
-                rem.BreakableClicked:InvokeServer(zoneNum, tostring(posIdStr))
-            end)
-        end
-        -- 3) Optional pets
-        if rem.CastPetBreakableAttack then
-            pcall(function()
-                rem.CastPetBreakableAttack:InvokeServer(zoneNameStr, tostring(posIdStr))
-            end)
-        end
-        task.wait(0.08)
-        if model and not model.Parent then break end
-        if not model then break end
-    end
-    if rem.CollectLoot then
-        pcall(function() rem.CollectLoot:InvokeServer() end)
-        pcall(function() rem.CollectLoot:InvokeServer(zoneNum, tostring(posIdStr)) end)
-        pcall(function() rem.CollectLoot:InvokeServer(zoneNameStr, tostring(posIdStr)) end)
-    end
-    if model then
-        local ok, piv = pcall(function() return model:GetPivot() end)
-        if ok and piv then
-            TS_TouchCollectAround(piv.Position, 35)
-        end
-    end
+    -- terakhir: exact name dari dropdown
+    return zonesFolder:FindFirstChild(tostring(zoneSel))
 end
 
 -- =========================
 -- Auto Tree
 -- =========================
-local TS_AutoTreeEnabled = false
-local TS_AutoTreeThread
+local AutoTreeEnabled = false
+local autoTreeThread = nil
 
-MainTab:CreateToggle({
+local AutoTreeToggle = MainTab:CreateToggle({
     Name = "Auto Tree",
     CurrentValue = false,
-    Flag = "TS_AutoTreeToggle_Unique",
-    Callback = function(v)
-        TS_AutoTreeEnabled = v
-        if v then
-            Rayfield:Notify({ Title = "Auto Tree Enabled", Content = "DamageTree + BreakableClicked + (optional) Pets + CollectLoot", Duration = 5 })
-            TS_AutoTreeThread = task.spawn(function()
-                local zonesFolder = TS_WS.__WORLD and TS_WS.__WORLD.MAP and TS_WS.__WORLD.MAP:WaitForChild("Zones", 5)
-                if not zonesFolder then
-                    Rayfield:Notify({ Title = "Auto Tree Error", Content = "Zones folder tidak ditemukan", Duration = 5 })
+    Flag = "AutoTreeToggle",
+    Callback = function(Value)
+        AutoTreeEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Auto Tree Enabled",
+                Content = "Memakai DamageTree + BreakableClicked (posId)",
+                Duration = 5
+            })
+            autoTreeThread = task.spawn(function()
+                if not (DamageTree and BreakableClicked) then
+                    Rayfield:Notify({
+                        Title = "Auto Tree Error",
+                        Content = "Remote tidak lengkap (DamageTree/BreakableClicked).",
+                        Duration = 5
+                    })
                     return
                 end
-                local rem = TS_GetRemotes()
-                if not rem or not rem.DamageTree then
-                    Rayfield:Notify({ Title = "Auto Tree Error", Content = "Remote DamageTree tidak ditemukan", Duration = 5 })
-                    return
-                end
-                while TS_AutoTreeEnabled do
-                    local zf = TS_FindZoneFolder(zonesFolder, TS_SelectedZone)
-                    if not zf then task.wait(0.5) goto CONTINUE end
-                    -- Ambil PosId dari server (lebih akurat)
-                    local ids = TS_GetServerPosIds(rem, "TREE", zf.Name)
-                    if #ids == 0 then
-                        -- fallback: scan workspace bila perlu
-                        local assets = zf:FindFirstChild("Assets")
-                        local trees = assets and assets:FindFirstChild("BREAKABLE_TREES")
-                        if trees then
-                            for _, m in ipairs(trees:GetChildren()) do
-                                local pid = m:GetAttribute("PosId")
-                                if pid ~= nil then table.insert(ids, tostring(pid)) end
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
+                while AutoTreeEnabled do
+                    local zoneFolder = findZoneFolder(zonesFolder, selectedTreeZone)
+                    local treesFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
+                    if treesFolder then
+                        local zoneNum = toZoneNumber(selectedTreeZone)
+                        local zoneStr = toZoneStringId(selectedTreeZone)
+                        for _, tree in ipairs(treesFolder:GetChildren()) do
+                            if not AutoTreeEnabled then break end
+                            if tree:IsA("Model") then
+                                local posId = getPosId(tree)
+                                if posId then
+                                    tpToModel(tree, 5) -- pastikan dekat (jika server cek jarak)
+                                    -- spam sesuai pola hasil spy-mu
+                                    while AutoTreeEnabled and tree.Parent do
+                                        pcall(function()
+                                            BreakableClicked:InvokeServer(zoneNum, posId)
+                                        end)
+                                        pcall(function()
+                                            DamageTree:InvokeServer(zoneStr, posId, true)
+                                        end)
+                                        task.wait(0.06) -- cukup cepat tapi tidak ekstrem
+                                    end
+                                end
                             end
                         end
+                    else
+                        task.wait(0.5)
                     end
-                    for _, posId in ipairs(ids) do
-                        if not TS_AutoTreeEnabled then break end
-                        TS_AttackTree(rem, zf, posId)
-                        task.wait(0.05)
-                    end
-                    ::CONTINUE::
-                    task.wait(0.25)
+                    task.wait(0.2)
                 end
             end)
         else
-            Rayfield:Notify({ Title = "Auto Tree Disabled", Content = "Dimatikan", Duration = 4 })
+            Rayfield:Notify({
+                Title = "Auto Tree Disabled",
+                Content = "Dimatikan",
+                Duration = 4
+            })
         end
     end
 })
@@ -457,53 +284,67 @@ MainTab:CreateToggle({
 -- =========================
 -- Auto Mining
 -- =========================
-local TS_AutoMiningEnabled = false
-local TS_AutoMiningThread
+local AutoMiningEnabled = false
+local autoMiningThread = nil
 
-MainTab:CreateToggle({
+local AutoMiningToggle = MainTab:CreateToggle({
     Name = "Auto Mining",
     CurrentValue = false,
-    Flag = "TS_AutoMiningToggle_Unique",
-    Callback = function(v)
-        TS_AutoMiningEnabled = v
-        if v then
-            Rayfield:Notify({ Title = "Auto Mining Enabled", Content = "DamageOre + BreakableClicked + (optional) Pets + CollectLoot", Duration = 5 })
-            TS_AutoMiningThread = task.spawn(function()
-                local zonesFolder = TS_WS.__WORLD and TS_WS.__WORLD.MAP and TS_WS.__WORLD.MAP:WaitForChild("Zones", 5)
-                if not zonesFolder then
-                    Rayfield:Notify({ Title = "Auto Mining Error", Content = "Zones folder tidak ditemukan", Duration = 5 })
+    Flag = "AutoMiningToggle",
+    Callback = function(Value)
+        AutoMiningEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Auto Mining Enabled",
+                Content = "Memakai DamageOre + BreakableClicked (posId)",
+                Duration = 5
+            })
+            autoMiningThread = task.spawn(function()
+                if not (DamageOre and BreakableClicked) then
+                    Rayfield:Notify({
+                        Title = "Auto Mining Error",
+                        Content = "Remote tidak lengkap (DamageOre/BreakableClicked).",
+                        Duration = 5
+                    })
                     return
                 end
-                local rem = TS_GetRemotes()
-                if not rem or not rem.DamageOre then
-                    Rayfield:Notify({ Title = "Auto Mining Error", Content = "Remote DamageOre tidak ditemukan", Duration = 5 })
-                    return
-                end
-                while TS_AutoMiningEnabled do
-                    local zf = TS_FindZoneFolder(zonesFolder, TS_SelectedZone)
-                    if not zf then task.wait(0.5) goto CONTINUE end
-                    local ids = TS_GetServerPosIds(rem, "ORE", zf.Name)
-                    if #ids == 0 then
-                        local assets = zf:FindFirstChild("Assets")
-                        local ores = assets and assets:FindFirstChild("BREAKABLE_ORES")
-                        if ores then
-                            for _, m in ipairs(ores:GetChildren()) do
-                                local pid = m:GetAttribute("PosId")
-                                if pid ~= nil then table.insert(ids, tostring(pid)) end
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
+                while AutoMiningEnabled do
+                    local zoneFolder = findZoneFolder(zonesFolder, selectedTreeZone)
+                    local oresFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
+                    if oresFolder then
+                        local zoneNum = toZoneNumber(selectedTreeZone)
+                        local zoneStr = toZoneStringId(selectedTreeZone)
+                        for _, ore in ipairs(oresFolder:GetChildren()) do
+                            if not AutoMiningEnabled then break end
+                            if ore:IsA("Model") then
+                                local posId = getPosId(ore)
+                                if posId then
+                                    tpToModel(ore, 5)
+                                    while AutoMiningEnabled and ore.Parent do
+                                        pcall(function()
+                                            BreakableClicked:InvokeServer(zoneNum, posId)
+                                        end)
+                                        pcall(function()
+                                            DamageOre:InvokeServer(zoneStr, posId, 1)
+                                        end)
+                                        task.wait(0.06)
+                                    end
+                                end
                             end
                         end
+                    else
+                        task.wait(0.5)
                     end
-                    for _, posId in ipairs(ids) do
-                        if not TS_AutoMiningEnabled then break end
-                        TS_AttackOre(rem, zf, posId)
-                        task.wait(0.05)
-                    end
-                    ::CONTINUE::
-                    task.wait(0.25)
+                    task.wait(0.2)
                 end
             end)
         else
-            Rayfield:Notify({ Title = "Auto Mining Disabled", Content = "Dimatikan", Duration = 4 })
+            Rayfield:Notify({
+                Title = "Auto Mining Disabled",
+                Content = "Dimatikan",
+                Duration = 4
+            })
         end
     end
 })
