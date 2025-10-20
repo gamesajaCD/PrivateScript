@@ -103,7 +103,7 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
 -- =========================
 -- Tree & Stone Features
 -- =========================
-MainTab:CreateSection("Tree & Stone Features")
+local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
 
 -- Ambil list Zone dari workspace
 local function getTreeZoneList()
@@ -139,9 +139,16 @@ local TreeZoneDropdown = MainTab:CreateDropdown({
     end
 })
 
--- Utils Tree/Stone
+-- =========================
+-- Utils (khusus Tree/Stone)
+-- =========================
+local RS_TS = game:GetService("ReplicatedStorage")
+local Players_TS = game:GetService("Players")
+local LocalPlayer_TS = Players_TS.LocalPlayer
+
+-- Remote “klik” breakable (agar drop keluar)
 local function getBreakableClickedRemote()
-    local Packages = RS:FindFirstChild("Packages")
+    local Packages = RS_TS:FindFirstChild("Packages")
     local Knit = Packages and Packages:FindFirstChild("Knit")
     local Services = Knit and Knit:FindFirstChild("Services")
     local FarmingService = Services and Services:FindFirstChild("FarmingService")
@@ -150,7 +157,7 @@ local function getBreakableClickedRemote()
     if not Remote then
         local ok
         ok, Remote = pcall(function()
-            local p = RS:WaitForChild("Packages", 5)
+            local p = RS_TS:WaitForChild("Packages", 5)
             local k = p and p:WaitForChild("Knit", 5)
             local s = k and k:WaitForChild("Services", 5)
             local f = s and s:WaitForChild("FarmingService", 5)
@@ -161,6 +168,7 @@ local function getBreakableClickedRemote()
     return Remote
 end
 
+-- Parse angka zone dari nama ("1", "Zone 2", dll)
 local function toZoneNumber(z)
     if type(z) == "number" then return z end
     local s = tostring(z or "")
@@ -168,6 +176,7 @@ local function toZoneNumber(z)
     return tonumber(num) or 1
 end
 
+-- Ambil ID unik breakable (prioritas PosId; fallback Name hex 32; lalu Name biasa)
 local function getBreakableId(model)
     if not model then return nil end
     local pid = model:GetAttribute("PosId")
@@ -180,9 +189,10 @@ local function getBreakableId(model)
     return model.Name
 end
 
+-- Teleport aman ke atas target model
 local function tpToModel(model, yOffset)
     yOffset = yOffset or 5
-    local char = LocalPlayer.Character
+    local char = LocalPlayer_TS.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not (root and model) then return end
     local pivotCF
@@ -201,7 +211,17 @@ local function tpToModel(model, yOffset)
     end
 end
 
+-- Klik server-side (aman + antisipasi error)
+local function serverClick(remote, zoneNum, breakableId)
+    if not remote or not zoneNum or not breakableId then return end
+    pcall(function()
+        remote:InvokeServer(zoneNum, tostring(breakableId))
+    end)
+end
+
+-- =========================
 -- Auto Tree
+-- =========================
 local AutoTreeEnabled = false
 local autoTreeThread = nil
 
@@ -218,7 +238,12 @@ local AutoTreeToggle = MainTab:CreateToggle({
                 Duration = 5
             })
             autoTreeThread = task.spawn(function()
+                -- Tunggu karakter siap (hindari error HRP nil)
+                if not LocalPlayer_TS.Character then
+                    LocalPlayer_TS.CharacterAdded:Wait()
+                end
                 local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
+
                 while AutoTreeEnabled do
                     local zoneName = selectedTreeZone or "1"
                     local zoneNum = toZoneNumber(zoneName)
@@ -227,17 +252,34 @@ local AutoTreeToggle = MainTab:CreateToggle({
                     local BreakableClicked = getBreakableClickedRemote()
 
                     if BreakableClicked and treesFolder then
+                        -- Urutkan berdasarkan jarak ke player biar efisien
+                        local char = LocalPlayer_TS.Character
+                        local root = char and char:FindFirstChild("HumanoidRootPart")
+                        local list = {}
                         for _, tree in ipairs(treesFolder:GetChildren()) do
-                            if not AutoTreeEnabled then break end
                             if tree:IsA("Model") then
-                                tpToModel(tree, 5)
+                                local anyPart = tree.PrimaryPart or tree:FindFirstChildWhichIsA("BasePart", true)
+                                local dist = (root and anyPart) and (root.Position - anyPart.Position).Magnitude or math.huge
+                                table.insert(list, {m = tree, d = dist})
+                            end
+                        end
+                        table.sort(list, function(a, b) return a.d < b.d end)
+
+                        for _, item in ipairs(list) do
+                            if not AutoTreeEnabled then break end
+                            local tree = item.m
+                            if tree and tree.Parent then
                                 local bid = getBreakableId(tree)
                                 if bid then
+                                    tpToModel(tree, 5)
+                                    -- Klik sampai hilang (dengan timeout safety)
+                                    local t0 = os.clock()
                                     while AutoTreeEnabled and tree.Parent do
-                                        pcall(function()
-                                            BreakableClicked:InvokeServer(zoneNum, tostring(bid))
-                                        end)
-                                        task.wait(0.08)
+                                        serverClick(BreakableClicked, zoneNum, bid)
+                                        task.wait(0.07)
+                                        if os.clock() - t0 > 20 then -- timeout 20s per tree
+                                            break
+                                        end
                                     end
                                 end
                             end
@@ -258,6 +300,7 @@ local AutoTreeToggle = MainTab:CreateToggle({
                         end
                         task.wait(1)
                     end
+
                     task.wait(0.2)
                 end
             end)
@@ -271,7 +314,9 @@ local AutoTreeToggle = MainTab:CreateToggle({
     end
 })
 
+-- =========================
 -- Auto Mining
+-- =========================
 local AutoMiningEnabled = false
 local autoMiningThread = nil
 
@@ -288,7 +333,11 @@ local AutoMiningToggle = MainTab:CreateToggle({
                 Duration = 5
             })
             autoMiningThread = task.spawn(function()
+                if not LocalPlayer_TS.Character then
+                    LocalPlayer_TS.CharacterAdded:Wait()
+                end
                 local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
+
                 while AutoMiningEnabled do
                     local zoneName = selectedTreeZone or "1"
                     local zoneNum = toZoneNumber(zoneName)
@@ -297,17 +346,32 @@ local AutoMiningToggle = MainTab:CreateToggle({
                     local BreakableClicked = getBreakableClickedRemote()
 
                     if BreakableClicked and oresFolder then
+                        local char = LocalPlayer_TS.Character
+                        local root = char and char:FindFirstChild("HumanoidRootPart")
+                        local list = {}
                         for _, ore in ipairs(oresFolder:GetChildren()) do
-                            if not AutoMiningEnabled then break end
                             if ore:IsA("Model") then
-                                tpToModel(ore, 5)
+                                local anyPart = ore.PrimaryPart or ore:FindFirstChildWhichIsA("BasePart", true)
+                                local dist = (root and anyPart) and (root.Position - anyPart.Position).Magnitude or math.huge
+                                table.insert(list, {m = ore, d = dist})
+                            end
+                        end
+                        table.sort(list, function(a, b) return a.d < b.d end)
+
+                        for _, item in ipairs(list) do
+                            if not AutoMiningEnabled then break end
+                            local ore = item.m
+                            if ore and ore.Parent then
                                 local bid = getBreakableId(ore)
                                 if bid then
+                                    tpToModel(ore, 5)
+                                    local t0 = os.clock()
                                     while AutoMiningEnabled and ore.Parent do
-                                        pcall(function()
-                                            BreakableClicked:InvokeServer(zoneNum, tostring(bid))
-                                        end)
-                                        task.wait(0.08)
+                                        serverClick(BreakableClicked, zoneNum, bid)
+                                        task.wait(0.07)
+                                        if os.clock() - t0 > 20 then -- timeout 20s per ore
+                                            break
+                                        end
                                     end
                                 end
                             end
@@ -328,6 +392,7 @@ local AutoMiningToggle = MainTab:CreateToggle({
                         end
                         task.wait(1)
                     end
+
                     task.wait(0.2)
                 end
             end)
