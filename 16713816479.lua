@@ -101,12 +101,12 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
 })
 
 -- =========================
--- Tree & Stone Features (Auto Click)
+-- Tree & Stone Features (Auto Click 1s, non-intrusive)
 -- =========================
 local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
 
 -- Ambil list Zone dari workspace
-local function getTreeZoneList()
+local function ac_getZoneList()
     local zoneList = {}
     local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
     if zonesFolder then
@@ -120,44 +120,50 @@ local function getTreeZoneList()
     return zoneList
 end
 
-local treeZoneList = getTreeZoneList()
-local selectedTreeZone = treeZoneList[1] or "1"
+local ac_zoneList = ac_getZoneList()
+local ac_selectedZone = ac_zoneList[1] or "1"
 
 -- Dropdown untuk Zone (Tree/Stone)
 local TreeZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone",
-    Options = treeZoneList,
-    CurrentOption = selectedTreeZone,
-    Flag = "ZoneDropdown_TreeStone",
+    Options = ac_zoneList,
+    CurrentOption = ac_selectedZone,
+    Flag = "ZoneDropdown_TreeStone_AutoClick",
     Callback = function(Option)
-        selectedTreeZone = (typeof(Option) == "table") and Option[1] or Option
+        ac_selectedZone = (typeof(Option) == "table") and Option[1] or Option
         Rayfield:Notify({
             Title = "Zone Selected",
-            Content = "Selected Zone: " .. tostring(selectedTreeZone),
-            Duration = 4
+            Content = "Selected Zone: " .. tostring(ac_selectedZone),
+            Duration = 3
         })
     end
 })
 
 -- =========================
--- Utils Auto Click
+-- Utils Auto Click (non-intrusive)
 -- =========================
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local VIM = game:FindService("VirtualInputManager") or game:GetService("VirtualInputManager")
+local VIM = game:FindFirstChildOfClass("VirtualInputManager") or game:GetService("VirtualInputManager")
 local VU = game:GetService("VirtualUser")
 
+-- Durasi klik per target (detik)
+local DUR_PER_TARGET = 1
+-- Interval antar klik dalam durasi (detik)
+local CLICK_INTERVAL = 0.03
+
 -- Cari zone folder dari berbagai kemungkinan nama
-local function findZoneFolder(zoneSel)
+local function ac_toNum(z)
+    local s = tostring(z or "")
+    local n = s:match("%d+")
+    return tonumber(n) or tonumber(s) or 1
+end
+
+local function ac_findZoneFolder(zoneSel)
     local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
     if not zonesFolder then return nil end
-    local function toNum(z)
-        local s = tostring(z or "")
-        local n = s:match("%d+")
-        return tonumber(n) or tonumber(s) or 1
-    end
-    local zn = toNum(zoneSel)
+    local zn = ac_toNum(zoneSel)
 
     -- exact
     local z = zonesFolder:FindFirstChild(tostring(zoneSel))
@@ -168,7 +174,7 @@ local function findZoneFolder(zoneSel)
     -- "Zone X"
     z = zonesFolder:FindFirstChild("Zone " .. tostring(zn))
     if z then return z end
-    -- by attr
+    -- by attr ZoneId
     for _, c in ipairs(zonesFolder:GetChildren()) do
         local zid = c:GetAttribute("ZoneId")
         if zid and tonumber(zid) == zn then
@@ -178,15 +184,15 @@ local function findZoneFolder(zoneSel)
     return nil
 end
 
--- Pilih part target: primarypart, lalu part terbesar
-local function pickTargetPart(model)
+-- Pilih part target: PrimaryPart, lalu part terbesar
+local function ac_pickTargetPart(model)
     if model.PrimaryPart then return model.PrimaryPart end
     local best, bestMag = nil, -1
     for _, d in ipairs(model:GetDescendants()) do
         if d:IsA("BasePart") then
-            local sizeMag = d.Size.Magnitude
-            if sizeMag > bestMag then
-                bestMag = sizeMag
+            local score = d.Size.Magnitude
+            if score > bestMag then
+                bestMag = score
                 best = d
             end
         end
@@ -194,39 +200,17 @@ local function pickTargetPart(model)
     return best
 end
 
--- Teleport aman ke atas target model
-local function tpToModel(model, yOffset)
-    yOffset = yOffset or 5
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not (root and model) then return end
-    local cf
-    local ok, pivotCF = pcall(function() return model:GetPivot() end)
-    if ok and pivotCF then
-        cf = pivotCF
-    else
-        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-        cf = part and part.CFrame
-    end
-    if cf then
-        root.CFrame = cf * CFrame.new(0, yOffset, 0)
-    end
-end
-
--- Simulasikan klik ke koordinat layar tertentu
-local function clickScreenXY(x, y, times, interval)
+-- Klik di koordinat layar (tidak gerak kamera/kursor OS)
+local function ac_clickXY(x, y, times, interval)
     times = times or 10
-    interval = interval or 0.05
+    interval = interval or CLICK_INTERVAL
     for i = 1, times do
         if VIM then
-            -- Pindah cursor virtual ke layar dan klik kiri
             pcall(function()
-                VIM:SendMouseMoveEvent(x, y, game)
-                VIM:SendMouseButtonEvent(x, y, true, 0, game, 0)  -- MouseButton1 down
-                VIM:SendMouseButtonEvent(x, y, false, 0, game, 0) -- MouseButton1 up
+                VIM:SendMouseButtonEvent(x, y, true, 0, game, 0)   -- down
+                VIM:SendMouseButtonEvent(x, y, false, 0, game, 0)  -- up
             end)
         else
-            -- Fallback: VirtualUser (kurang akurat, tapi dicoba)
             pcall(function()
                 VU:Button1Down(Vector2.new(x, y), Camera.CFrame)
                 task.wait(0.01)
@@ -237,118 +221,99 @@ local function clickScreenXY(x, y, times, interval)
     end
 end
 
--- Klik model dengan cara:
--- 1) Ambil part target
--- 2) Konversi posisi dunia -> layar
--- 3) Klik berkali-kali di koordinat itu
-local function autoClickModel(model, totalDuration)
-    totalDuration = totalDuration or 3.0 -- durasi per target (detik)
-    local start = os.clock()
-    while model and model.Parent and (os.clock() - start) < totalDuration do
-        local part = pickTargetPart(model)
-        if not part then break end
-        local pos = part.Position
-        local onScreen, x, y
-        local v = Camera:WorldToViewportPoint(pos)
+-- Klik sebuah part selama DUR_PER_TARGET detik (tanpa ganggu kamera)
+local function ac_clickPartFor(part, duration)
+    duration = duration or DUR_PER_TARGET
+    local t0 = os.clock()
+    while os.clock() - t0 < duration do
+        if not part or not part.Parent then break end
+        local v = Camera:WorldToViewportPoint(part.Position)
         if v and v.Z > 0 then
-            onScreen = true
-            x, y = v.X, v.Y
+            ac_clickXY(v.X, v.Y, 1, CLICK_INTERVAL)
+        else
+            -- jika tidak on-screen, skip sejenak
+            task.wait(0.05)
         end
-        if onScreen then
-            clickScreenXY(x, y, 5, 0.03) -- beberapa klik per iterasi
-        end
-        task.wait(0.05)
+    end
+end
+
+-- Klik model (cari part target, lalu klik 1 detik)
+local function ac_clickModel1s(model)
+    local part = ac_pickTargetPart(model)
+    if part then
+        ac_clickPartFor(part, DUR_PER_TARGET)
     end
 end
 
 -- =========================
--- Auto Tree (Auto Click)
+-- Auto Tree (Auto Click 1s)
 -- =========================
-local AutoTreeEnabled = false
-local autoTreeThread = nil
+local AC_AutoTreeEnabled = false
+local ac_treeThread = nil
 
 local AutoTreeToggle = MainTab:CreateToggle({
-    Name = "Auto Tree (Auto Click)",
+    Name = "Auto Tree (Auto Click 1s)",
     CurrentValue = false,
-    Flag = "AutoTreeToggle_AutoClick",
+    Flag = "AutoTreeToggle_AutoClick1s",
     Callback = function(Value)
-        AutoTreeEnabled = Value
+        AC_AutoTreeEnabled = Value
         if Value then
-            Rayfield:Notify({
-                Title = "Auto Tree Enabled",
-                Content = "Mode: Auto Click (simulasi klik mouse ke pohon)",
-                Duration = 5
-            })
-            autoTreeThread = task.spawn(function()
-                while AutoTreeEnabled do
-                    local zoneFolder = findZoneFolder(selectedTreeZone)
+            -- Tidak spam notifikasi agar tidak mengganggu
+            ac_treeThread = task.spawn(function()
+                while AC_AutoTreeEnabled do
+                    local zoneFolder = ac_findZoneFolder(ac_selectedZone)
                     local treesFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
                     if treesFolder then
                         for _, tree in ipairs(treesFolder:GetChildren()) do
-                            if not AutoTreeEnabled then break end
+                            if not AC_AutoTreeEnabled then break end
                             if tree:IsA("Model") then
-                                tpToModel(tree, 5)
-                                autoClickModel(tree, 3.0) -- klik 3 detik per tree
+                                ac_clickModel1s(tree) -- klik 1 detik per tree
                             end
                         end
                     else
-                        task.wait(0.5)
+                        task.wait(0.3)
                     end
-                    task.wait(0.2)
+                    task.wait(0.1)
                 end
             end)
         else
-            Rayfield:Notify({
-                Title = "Auto Tree Disabled",
-                Content = "Dimatikan",
-                Duration = 4
-            })
+            -- Dimatikan
         end
     end
 })
 
 -- =========================
--- Auto Mining (Auto Click)
+-- Auto Mining (Auto Click 1s)
 -- =========================
-local AutoMiningEnabled = false
-local autoMiningThread = nil
+local AC_AutoMiningEnabled = false
+local ac_miningThread = nil
 
 local AutoMiningToggle = MainTab:CreateToggle({
-    Name = "Auto Mining (Auto Click)",
+    Name = "Auto Mining (Auto Click 1s)",
     CurrentValue = false,
-    Flag = "AutoMiningToggle_AutoClick",
+    Flag = "AutoMiningToggle_AutoClick1s",
     Callback = function(Value)
-        AutoMiningEnabled = Value
+        AC_AutoMiningEnabled = Value
         if Value then
-            Rayfield:Notify({
-                Title = "Auto Mining Enabled",
-                Content = "Mode: Auto Click (simulasi klik mouse ke ore)",
-                Duration = 5
-            })
-            autoMiningThread = task.spawn(function()
-                while AutoMiningEnabled do
-                    local zoneFolder = findZoneFolder(selectedTreeZone)
+            ac_miningThread = task.spawn(function()
+                while AC_AutoMiningEnabled do
+                    local zoneFolder = ac_findZoneFolder(ac_selectedZone)
                     local oresFolder = zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
                     if oresFolder then
                         for _, ore in ipairs(oresFolder:GetChildren()) do
-                            if not AutoMiningEnabled then break end
+                            if not AC_AutoMiningEnabled then break end
                             if ore:IsA("Model") then
-                                tpToModel(ore, 5)
-                                autoClickModel(ore, 3.0) -- klik 3 detik per ore
+                                ac_clickModel1s(ore) -- klik 1 detik per ore
                             end
                         end
                     else
-                        task.wait(0.5)
+                        task.wait(0.3)
                     end
-                    task.wait(0.2)
+                    task.wait(0.1)
                 end
             end)
         else
-            Rayfield:Notify({
-                Title = "Auto Mining Disabled",
-                Content = "Dimatikan",
-                Duration = 4
-            })
+            -- Dimatikan
         end
     end
 })
