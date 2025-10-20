@@ -280,12 +280,15 @@ local AutoMiningToggle = MainTab:CreateToggle({
 })
 
 -- =========================
--- Fish
+-- Fish Features
 -- =========================
 local FishSection = MainTab:CreateSection("Fish Features")
 
--- Helper Fish Zones: ambil ZoneId dari ReplicatedStorage.Assets.Fish
 local RS = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+-- Ambil daftar zone mancing dari ReplicatedStorage.Assets.Fish
 local function getFishZones()
     local options, labelToId = {}, {}
     local assets = RS:FindFirstChild("Assets")
@@ -295,18 +298,18 @@ local function getFishZones()
             if zone.Name ~= "NOT USED" then
                 local zid = zone:GetAttribute("ZoneId") or tonumber(zone.Name:match("%d+")) or tonumber(zone.Name)
                 if zid then
-                    local label = "Zone " .. tostring(zid)
-                    if not labelToId[label] then -- hindari duplikat
-                        table.insert(options, label)
+                    local label = ("Zone %d"):format(zid)
+                    if not labelToId[label] then
                         labelToId[label] = zid
+                        table.insert(options, label)
                     end
                 end
             end
         end
     end
     table.sort(options, function(a, b)
-        local ai = labelToId[a] or 9999
-        local bi = labelToId[b] or 9999
+        local ai = labelToId[a] or math.huge
+        local bi = labelToId[b] or math.huge
         return ai < bi
     end)
     if #options == 0 then
@@ -320,7 +323,7 @@ local fishOptions, fishLabelToId = getFishZones()
 local selectedFishLabel = fishOptions[1]
 local selectedFishZoneId = fishLabelToId[selectedFishLabel] or tonumber(selectedFishLabel:match("%d+")) or 1
 
--- Dropdown untuk Zone (Fish)
+-- Dropdown Zone (Fish)
 local FishZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone (Fish)",
     Options = fishOptions,
@@ -337,27 +340,51 @@ local FishZoneDropdown = MainTab:CreateDropdown({
     end
 })
 
--- Auto Fish (CastFishingRod only, tanpa teleport fish)
+-- Util: hitung parameter lempar kail di depan player
+local function computeCastParamsAheadOfPlayer()
+    local lp = Players.LocalPlayer
+    local char = lp and lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+
+    local cf = hrp.CFrame
+    local forward = cf.LookVector
+    local up = cf.UpVector
+
+    local castDistance = 18 -- jarak lempar ke depan player (ubah sesuai kebutuhan)
+    local origin = hrp.Position + up * 1.5 + forward * 2
+    local p2 = origin + forward * 6 + up * 2.5
+    local p3 = origin + forward * 12 + up * 4
+
+    local target = origin + forward * castDistance
+
+    -- Raycast ke bawah untuk cari permukaan (air/tanah) di sekitar target
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {char}
+
+    local result = Workspace:Raycast(target + up * 50, Vector3.new(0, -200, 0), params)
+    local p4 = result and result.Position or (target - up * 4)
+
+    local c6 = CFrame.lookAt(p4, p4 + forward)
+    return origin, p2, p3, p4, c6
+end
+
+-- Remote CastFishingRod
+local function getCastRemote()
+    local Packages = RS:FindFirstChild("Packages")
+    local Knit = Packages and Packages:FindFirstChild("Knit")
+    local Services = Knit and Knit:FindFirstChild("Services")
+    local FarmingService = Services and Services:FindFirstChild("FarmingService")
+    local RF = FarmingService and FarmingService:FindFirstChild("RF")
+    return RF and RF:FindFirstChild("CastFishingRod") or nil
+end
+
+-- Auto Fish (CastFishingRod only)
 local AutoFishEnabled = false
 local autoFishThread = nil
 
--- Param lempar kail (silakan ganti ke param milikmu jika perlu)
-ohNumber1 = 0.9900000000000007
-ohVector32 = Vector3.new(-4246.31005859375, 3.2426726818084717, 51.4597282409668)
-ohVector33 = Vector3.new(-4247.716796875, 5.40488862991333, 52.732933044433594)
-ohVector34 = Vector3.new(-4254.28173828125, 12.482332229614258, 59.960567474365234)
-ohVector35 = Vector3.new(-4254.28173828125, -4.777624130249023, 59.960567474365234)
-ohCFrame6 = CFrame.new(-4254.28174, -4.77762318, 59.96035, 0.708604872, -0, 0.705605507, 0, 1, -0, -0.705605507, 0, 0.708604872)
-
--- Jika ingin pakai param yang kamu kirim (contoh di pesan), ganti ke bawah ini:
---[[
-ohNumber1 = 0.9900000000000007
-ohVector32 = Vector3.new(-4246.31005859375, 3.2426726818084717, 51.4597282409668)
-ohVector33 = Vector3.new(-4247.716796875, 5.40488862991333, 52.732933044433594)
-ohVector34 = Vector3.new(-4254.28173828125, 12.482332229614258, 59.960567474365234)
-ohVector35 = Vector3.new(-4254.28173828125, -4.777624130249023, 59.960567474365234)
-ohCFrame6 = CFrame.new(-4254.28174, -4.77762318, 59.96035, 0.708604872, -0, 0.705605507, 0, 1, -0, -0.705605507, 0, 0.708604872)
-]]
+local ohNumber1 = 0.99
 
 local AutoFishToggle = MainTab:CreateToggle({
     Name = "Auto Fish",
@@ -372,29 +399,43 @@ local AutoFishToggle = MainTab:CreateToggle({
                 Duration = 4
             })
             autoFishThread = task.spawn(function()
-                local castFishingRod = RS.Packages
-                    and RS.Packages.Knit
-                    and RS.Packages.Knit.Services
-                    and RS.Packages.Knit.Services.FarmingService
-                    and RS.Packages.Knit.Services.FarmingService.RF
-                    and RS.Packages.Knit.Services.FarmingService.RF.CastFishingRod
-
+                local castFishingRod = getCastRemote()
                 if not castFishingRod then
-                    Rayfield:Notify({
-                        Title = "Auto Fish Warning",
-                        Content = "Remote CastFishingRod tidak ditemukan.",
-                        Duration = 5
-                    })
-                    return
+                    -- Coba tunggu sebentar kalau belum replicate
+                    local ok
+                    ok, castFishingRod = pcall(function()
+                        local Packages = RS:WaitForChild("Packages", 5)
+                        local Knit = Packages and Packages:WaitForChild("Knit", 5)
+                        local Services = Knit and Knit:WaitForChild("Services", 5)
+                        local FarmingService = Services and Services:WaitForChild("FarmingService", 5)
+                        local RF = FarmingService and FarmingService:WaitForChild("RF", 5)
+                        return RF and RF:WaitForChild("CastFishingRod", 5)
+                    end)
+                    if not ok or not castFishingRod then
+                        Rayfield:Notify({
+                            Title = "Auto Fish Warning",
+                            Content = "Remote CastFishingRod tidak ditemukan.",
+                            Duration = 5
+                        })
+                        return
+                    end
                 end
 
                 while AutoFishEnabled do
-                    -- ohNumber7 mengikuti pilihan dropdown fish
-                    local ohNumber7 = tonumber(selectedFishZoneId) or tonumber(tostring(selectedFishLabel):match("%d+")) or 1
-                    pcall(function()
-                        castFishingRod:InvokeServer(ohNumber1, ohVector32, ohVector33, ohVector34, ohVector35, ohCFrame6, ohNumber7)
-                    end)
-                    task.wait(6) -- jeda agar tidak terlalu spam
+                    local v1, v2, v3, v4, c6 = computeCastParamsAheadOfPlayer()
+                    if v1 then
+                        local ohNumber7 = tonumber(selectedFishZoneId) or tonumber(tostring(selectedFishLabel):match("%d+")) or 1
+                        pcall(function()
+                            castFishingRod:InvokeServer(ohNumber1, v1, v2, v3, v4, c6, ohNumber7)
+                        end)
+                    else
+                        Rayfield:Notify({
+                            Title = "Auto Fish",
+                            Content = "Character/HumanoidRootPart belum siap.",
+                            Duration = 3
+                        })
+                    end
+                    task.wait(3) -- jeda biar tidak spam
                 end
             end)
         else
@@ -402,6 +443,53 @@ local AutoFishToggle = MainTab:CreateToggle({
                 Title = "Auto Fish Disabled",
                 Content = "Auto Fish dihentikan",
                 Duration = 4
+            })
+        end
+    end
+})
+
+-- Instant Catch Fish (opsional, masih di Fish Section)
+local InstantCatchFishEnabled = false
+local instantCatchFishThread = nil
+local InstantCatchFishToggle = MainTab:CreateToggle({
+    Name = "Instant Catch Fish",
+    CurrentValue = false,
+    Flag = "InstantCatchFishToggle",
+    Callback = function(Value)
+        InstantCatchFishEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Instant Catch Fish Enabled",
+                Content = "Started instant catching fish",
+                Duration = 5
+            })
+            instantCatchFishThread = task.spawn(function()
+                local catchRemote = RS.Packages
+                    and RS.Packages.Knit
+                    and RS.Packages.Knit.Services
+                    and RS.Packages.Knit.Services.FarmingService
+                    and RS.Packages.Knit.Services.FarmingService.RF
+                    and RS.Packages.Knit.Services.FarmingService.RF.CatchSequenceFinish
+                if not catchRemote then
+                    Rayfield:Notify({
+                        Title = "Instant Catch Warning",
+                        Content = "Remote CatchSequenceFinish tidak ditemukan.",
+                        Duration = 5
+                    })
+                    return
+                end
+                while InstantCatchFishEnabled do
+                    pcall(function()
+                        catchRemote:InvokeServer(true, true)
+                    end)
+                    task.wait(0.1)
+                end
+            end)
+        else
+            Rayfield:Notify({
+                Title = "Instant Catch Fish Disabled",
+                Content = "Instant Catch Fish dihentikan",
+                Duration = 5
             })
         end
     end
