@@ -100,215 +100,223 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
     end
 })
 
--- =========================
--- Tree & Stone Features (Auto Click sudut kiri atas)
--- =========================
-local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
+-- ========================= -- Tree & Stone Features (Auto Click sudut kiri atas) -- ========================= 
+local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features") 
 
--- Ambil list Zone dari workspace
-local function getTreeZoneList()
-    local zoneList = {}
-    local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
-    if zonesFolder then
-        for _, zone in ipairs(zonesFolder:GetChildren()) do
-            table.insert(zoneList, zone.Name)
-        end
-    end
-    if #zoneList == 0 then
-        zoneList = {"1"} -- fallback
-    end
-    return zoneList
-end
+-- Ambil list Zone dari workspace 
+local function getTreeZoneList() 
+    local zoneList = {} 
+    local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones") 
+    if zonesFolder then 
+        for _, zone in ipairs(zonesFolder:GetChildren()) do 
+            table.insert(zoneList, zone.Name) 
+        end 
+    end 
+    if #zoneList == 0 then 
+        zoneList = {"1"} -- fallback 
+    end 
+    return zoneList 
+end 
 
-local treeZoneList = getTreeZoneList()
-local selectedTreeZone = treeZoneList[1] or "1"
+local treeZoneList = getTreeZoneList() 
+local selectedTreeZone = treeZoneList[1] or "1" 
 
--- Dropdown untuk Zone
-local TreeZoneDropdown = MainTab:CreateDropdown({
-    Name = "Select Zone",
-    Options = treeZoneList,
-    CurrentOption = selectedTreeZone,
-    Flag = "ZoneDropdown_TreeStone",
-    Callback = function(Option)
-        selectedTreeZone = (typeof(Option) == "table") and Option[1] or Option
-        Rayfield:Notify({
-            Title = "Zone Selected",
-            Content = "Selected Zone: " .. tostring(selectedTreeZone),
-            Duration = 3
-        })
-    end
-})
+-- Dropdown untuk Zone 
+local TreeZoneDropdown = MainTab:CreateDropdown({ 
+    Name = "Select Zone", 
+    Options = treeZoneList, 
+    CurrentOption = selectedTreeZone, 
+    Flag = "ZoneDropdown_TreeStone", 
+    Callback = function(Option) 
+        selectedTreeZone = (typeof(Option) == "table") and Option[1] or Option 
+        Rayfield:Notify({ 
+            Title = "Zone Selected", 
+            Content = "Selected Zone: " .. tostring(selectedTreeZone), 
+            Duration = 3 
+        }) 
+    end 
+}) 
 
--- =========================
--- Utils
--- =========================
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-local VIM = game:GetService("VirtualInputManager") -- klik non-intrusif
+-- Slider untuk Speed Click (cps: clicks per second) 
+local clickSpeed = 5  -- Default: 5 clicks per second 
+local clickInterval = 1 / clickSpeed  -- Hitung interval berdasarkan speed 
 
--- Cari zone folder dari berbagai kemungkinan nama
-local function findZoneFolder(zoneSel)
-    local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
-    if not zonesFolder then return nil end
-    local function toNum(z)
-        local s = tostring(z or "")
-        local n = s:match("%d+")
-        return tonumber(n) or tonumber(s) or 1
-    end
-    local zn = toNum(zoneSel)
+local ClickSpeedSlider = MainTab:CreateSlider({ 
+    Name = "Click Speed (cps)", 
+    Min = 0.1, 
+    Max = 10, 
+    Increment = 0.1, 
+    CurrentValue = clickSpeed, 
+    Flag = "ClickSpeedSlider_TreeStone", 
+    Callback = function(Value) 
+        clickSpeed = Value 
+        clickInterval = 1 / Value 
+        Rayfield:Notify({ 
+            Title = "Click Speed Updated", 
+            Content = "New Speed: " .. tostring(Value) .. " cps (Interval: " .. tostring(clickInterval) .. "s)", 
+            Duration = 3 
+        }) 
+    end 
+}) 
 
-    -- exact
-    local z = zonesFolder:FindFirstChild(tostring(zoneSel))
-    if z then return z end
-    -- numeric
-    z = zonesFolder:FindFirstChild(tostring(zn))
-    if z then return z end
-    -- "Zone X"
-    z = zonesFolder:FindFirstChild("Zone " .. tostring(zn))
-    if z then return z end
-    -- by attribute ZoneId
-    for _, c in ipairs(zonesFolder:GetChildren()) do
-        local zid = c:GetAttribute("ZoneId")
-        if zid and tonumber(zid) == zn then
-            return c
-        end
-    end
-    return nil
-end
+-- ========================= -- Utils -- ========================= 
+local Players = game:GetService("Players") 
+local LocalPlayer = Players.LocalPlayer 
+local Camera = workspace.CurrentCamera 
+local VIM = game:GetService("VirtualInputManager") -- klik non-intrusif 
 
--- Teleport aman ke atas target model
-local function tpToModel(model, yOffset)
-    yOffset = yOffset or 5
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart", 5)
-    if not (root and model) then return end
-    local cf
-    local ok, pivotCF = pcall(function() return model:GetPivot() end)
-    if ok and pivotCF then
-        cf = pivotCF
-    else
-        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-        cf = part and part.CFrame
-    end
-    if cf then
-        root.CFrame = cf * CFrame.new(0, yOffset, 0)
-    end
-end
+-- Cari zone folder dari berbagai kemungkinan nama 
+local function findZoneFolder(zoneSel) 
+    local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones") 
+    if not zonesFolder then return nil end 
+    local function toNum(z) 
+        local s = tostring(z or "") 
+        local n = s:match("%d+") 
+        return tonumber(n) or tonumber(s) or 1 
+    end 
+    local zn = toNum(zoneSel) 
+    -- exact 
+    local z = zonesFolder:FindFirstChild(tostring(zoneSel)) 
+    if z then return z end 
+    -- numeric 
+    z = zonesFolder:FindFirstChild(tostring(zn)) 
+    if z then return z end 
+    -- "Zone X" 
+    z = zonesFolder:FindFirstChild("Zone " .. tostring(zn)) 
+    if z then return z end 
+    -- by attribute ZoneId 
+    for _, c in ipairs(zonesFolder:GetChildren()) do 
+        local zid = c:GetAttribute("ZoneId") 
+        if zid and tonumber(zid) == zn then return c end 
+    end 
+    return nil 
+end 
 
--- Klik di sudut kiri atas sampai target hilang
-local CLICK_X, CLICK_Y = 6, 6  -- sudut kiri atas (sedikit offset dari (0,0))
-local function clickTopLeftUntilGone(model, interval)
-    interval = interval or 0.03 -- cepat tapi tidak terlalu spam
-    while model and model.Parent do
-        -- kirim klik kiri di (CLICK_X, CLICK_Y)
-        pcall(function()
-            VIM:SendMouseButtonEvent(CLICK_X, CLICK_Y, true, 0, game, 0)  -- down
-            VIM:SendMouseButtonEvent(CLICK_X, CLICK_Y, false, 0, game, 0) -- up
-        end)
-        task.wait(interval)
-    end
-end
+-- Teleport aman ke atas target model 
+local function tpToModel(model, yOffset) 
+    yOffset = yOffset or 5 
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() 
+    local root = char:WaitForChild("HumanoidRootPart", 5) 
+    if not (root and model) then return end 
+    local cf 
+    local ok, pivotCF = pcall(function() return model:GetPivot() end) 
+    if ok and pivotCF then 
+        cf = pivotCF 
+    else 
+        local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true) 
+        cf = part and part.CFrame 
+    end 
+    if cf then 
+        root.CFrame = cf * CFrame.new(0, yOffset, 0) 
+    end 
+end 
 
--- Ambil folder target
-local function getTreesFolder()
-    local zoneFolder = findZoneFolder(selectedTreeZone)
-    return zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
-end
+-- Klik di sudut kiri atas sampai target hilang 
+local CLICK_X, CLICK_Y = 6, 6 -- sudut kiri atas (sedikit offset dari (0,0)) 
+local function clickTopLeftUntilGone(model) 
+    while model and model.Parent do 
+        -- kirim klik kiri di (CLICK_X, CLICK_Y) 
+        pcall(function() 
+            VIM:SendMouseButtonEvent(CLICK_X, CLICK_Y, true, 0, game, 0) -- down 
+            VIM:SendMouseButtonEvent(CLICK_X, CLICK_Y, false, 0, game, 0) -- up 
+        end) 
+        task.wait(clickInterval) 
+    end 
+end 
 
-local function getOresFolder()
-    local zoneFolder = findZoneFolder(selectedTreeZone)
-    return zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
-end
+-- Ambil folder target 
+local function getTreesFolder() 
+    local zoneFolder = findZoneFolder(selectedTreeZone) 
+    return zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES") 
+end 
 
--- =========================
--- Auto Tree (Top-left Click)
--- =========================
-local AutoTreeEnabled = false
-local autoTreeThread = nil
+local function getOresFolder() 
+    local zoneFolder = findZoneFolder(selectedTreeZone) 
+    return zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES") 
+end 
 
-local AutoTreeToggle = MainTab:CreateToggle({
-    Name = "Auto Tree (Top-left Click)",
-    CurrentValue = false,
-    Flag = "AutoTreeToggle_TopLeft",
-    Callback = function(Value)
-        AutoTreeEnabled = Value
-        if Value then
-            Rayfield:Notify({
-                Title = "Auto Tree Enabled",
-                Content = "Teleport -> Klik sudut kiri atas sampai tree hilang",
-                Duration = 4
-            })
-            autoTreeThread = task.spawn(function()
-                while AutoTreeEnabled do
-                    local treesFolder = getTreesFolder()
-                    if treesFolder then
-                        for _, tree in ipairs(treesFolder:GetChildren()) do
-                            if not AutoTreeEnabled then break end
-                            if tree:IsA("Model") then
-                                tpToModel(tree, 5)
-                                clickTopLeftUntilGone(tree, 0.03)
-                            end
-                        end
-                    else
-                        task.wait(0.4)
-                    end
-                    task.wait(0.1)
-                end
-            end)
-        else
-            Rayfield:Notify({
-                Title = "Auto Tree Disabled",
-                Content = "Dimatikan",
-                Duration = 3
-            })
-        end
-    end
-})
+-- ========================= -- Auto Tree (Top-left Click) -- ========================= 
+local AutoTreeEnabled = false 
+local autoTreeThread = nil 
+local AutoTreeToggle = MainTab:CreateToggle({ 
+    Name = "Auto Tree (Top-left Click)", 
+    CurrentValue = false, 
+    Flag = "AutoTreeToggle_TopLeft", 
+    Callback = function(Value) 
+        AutoTreeEnabled = Value 
+        if Value then 
+            Rayfield:Notify({ 
+                Title = "Auto Tree Enabled", 
+                Content = "Teleport -> Klik sudut kiri atas sampai tree hilang", 
+                Duration = 4 
+            }) 
+            autoTreeThread = task.spawn(function() 
+                while AutoTreeEnabled do 
+                    local treesFolder = getTreesFolder() 
+                    if treesFolder then 
+                        for _, tree in ipairs(treesFolder:GetChildren()) do 
+                            if not AutoTreeEnabled then break end 
+                            if tree:IsA("Model") then 
+                                tpToModel(tree, 5) 
+                                clickTopLeftUntilGone(tree) 
+                            end 
+                        end 
+                    else 
+                        task.wait(0.4) 
+                    end 
+                    task.wait(0.1) 
+                end 
+            end) 
+        else 
+            Rayfield:Notify({ 
+                Title = "Auto Tree Disabled", 
+                Content = "Dimatikan", 
+                Duration = 3 
+            }) 
+        end 
+    end 
+}) 
 
--- =========================
--- Auto Mining (Top-left Click)
--- =========================
-local AutoMiningEnabled = false
-local autoMiningThread = nil
-
-local AutoMiningToggle = MainTab:CreateToggle({
-    Name = "Auto Mining (Top-left Click)",
-    CurrentValue = false,
-    Flag = "AutoMiningToggle_TopLeft",
-    Callback = function(Value)
-        AutoMiningEnabled = Value
-        if Value then
-            Rayfield:Notify({
-                Title = "Auto Mining Enabled",
-                Content = "Teleport -> Klik sudut kiri atas sampai ore hilang",
-                Duration = 4
-            })
-            autoMiningThread = task.spawn(function()
-                while AutoMiningEnabled do
-                    local oresFolder = getOresFolder()
-                    if oresFolder then
-                        for _, ore in ipairs(oresFolder:GetChildren()) do
-                            if not AutoMiningEnabled then break end
-                            if ore:IsA("Model") then
-                                tpToModel(ore, 5)
-                                clickTopLeftUntilGone(ore, 0.03)
-                            end
-                        end
-                    else
-                        task.wait(0.4)
-                    end
-                    task.wait(0.1)
-                end
-            end)
-        else
-            Rayfield:Notify({
-                Title = "Auto Mining Disabled",
-                Content = "Dimatikan",
-                Duration = 3
-            })
-        end
-    end
+-- ========================= -- Auto Mining (Top-left Click) -- ========================= 
+local AutoMiningEnabled = false 
+local autoMiningThread = nil 
+local AutoMiningToggle = MainTab:CreateToggle({ 
+    Name = "Auto Mining (Top-left Click)", 
+    CurrentValue = false, 
+    Flag = "AutoMiningToggle_TopLeft", 
+    Callback = function(Value) 
+        AutoMiningEnabled = Value 
+        if Value then 
+            Rayfield:Notify({ 
+                Title = "Auto Mining Enabled", 
+                Content = "Teleport -> Klik sudut kiri atas sampai ore hilang", 
+                Duration = 4 
+            }) 
+            autoMiningThread = task.spawn(function() 
+                while AutoMiningEnabled do 
+                    local oresFolder = getOresFolder() 
+                    if oresFolder then 
+                        for _, ore in ipairs(oresFolder:GetChildren()) do 
+                            if not AutoMiningEnabled then break end 
+                            if ore:IsA("Model") then 
+                                tpToModel(ore, 5) 
+                                clickTopLeftUntilGone(ore) 
+                            end 
+                        end 
+                    else 
+                        task.wait(0.4) 
+                    end 
+                    task.wait(0.1) 
+                end 
+            end) 
+        else 
+            Rayfield:Notify({ 
+                Title = "Auto Mining Disabled", 
+                Content = "Dimatikan", 
+                Duration = 3 
+            }) 
+        end 
+    end 
 })
 
 -- =========================
