@@ -221,27 +221,6 @@ local function getOresFolder()
     return zoneFolder and zoneFolder:FindFirstChild("Assets") and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
 end
 
--- Variabel global untuk click speed
-local clickSpeed = 5  -- default 5 (interval 0.06s)
-
--- Slider untuk Click Speed (1-10)
-local ClickSpeedSlider = MainTab:CreateSlider({
-    Name = "Click Speed",
-    Range = {1, 10},
-    Increment = 1,
-    Suffix = "",
-    CurrentValue = clickSpeed,
-    Flag = "ClickSpeedSlider",
-    Callback = function(Value)
-        clickSpeed = Value
-        Rayfield:Notify({
-            Title = "Click Speed Updated",
-            Content = "New Click Speed: " .. tostring(clickSpeed) .. " (Interval: " .. tostring(0.3 / clickSpeed) .. "s)",
-            Duration = 3
-        })
-    end
-})
-
 -- =========================
 -- Auto Tree (Top-left Click)
 -- =========================
@@ -268,8 +247,7 @@ local AutoTreeToggle = MainTab:CreateToggle({
                             if not AutoTreeEnabled then break end
                             if tree:IsA("Model") then
                                 tpToModel(tree, 5)
-                                local interval = 0.3 / clickSpeed  -- Hitung interval berdasarkan speed (speed 1: 0.3s, speed 10: 0.03s)
-                                clickTopLeftUntilGone(tree, interval)
+                                clickTopLeftUntilGone(tree, 2)
                             end
                         end
                     else
@@ -314,8 +292,7 @@ local AutoMiningToggle = MainTab:CreateToggle({
                             if not AutoMiningEnabled then break end
                             if ore:IsA("Model") then
                                 tpToModel(ore, 5)
-                                local interval = 0.3 / clickSpeed  -- Hitung interval berdasarkan speed (speed 1: 0.3s, speed 10: 0.03s)
-                                clickTopLeftUntilGone(ore, interval)
+                                clickTopLeftUntilGone(ore, 0.03)
                             end
                         end
                     else
