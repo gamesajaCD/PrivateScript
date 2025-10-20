@@ -100,11 +100,13 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
     end
 })
 
--- Membuat section Tree & Stone
+-- =========================
+-- Tree & Stone Features
+-- =========================
 local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
 
--- Fungsi untuk mendapatkan list zones (Tree/Stone)
-local function getZoneList()
+-- Ambil list Zone dari workspace
+local function getTreeZoneList()
     local zoneList = {}
     local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
     if zonesFolder then
@@ -112,42 +114,62 @@ local function getZoneList()
             table.insert(zoneList, zone.Name)
         end
     end
+    if #zoneList == 0 then
+        zoneList = {"1"} -- fallback
+    end
     return zoneList
 end
 
-local zoneList = getZoneList()
-local selectedZone = zoneList[1] or "1"
+local treeZoneList = getTreeZoneList()
+local selectedTreeZone = treeZoneList[1] or "1"
 
 -- Dropdown untuk Zone (Tree/Stone)
-local ZoneDropdown = MainTab:CreateDropdown({
+local TreeZoneDropdown = MainTab:CreateDropdown({
     Name = "Select Zone",
-    Options = zoneList,
-    CurrentOption = selectedZone,
-    Flag = "ZoneDropdown",
+    Options = treeZoneList,
+    CurrentOption = selectedTreeZone,
+    Flag = "ZoneDropdown_TreeStone",
     Callback = function(Option)
-        selectedZone = (typeof(Option) == "table") and Option[1] or Option
+        selectedTreeZone = (typeof(Option) == "table") and Option[1] or Option
         Rayfield:Notify({
             Title = "Zone Selected",
-            Content = "Selected Zone: " .. tostring(selectedZone),
-            Duration = 5
+            Content = "Selected Zone: " .. tostring(selectedTreeZone),
+            Duration = 4
         })
     end
 })
 
--- ===== Auto Tree & Mining: pakai BreakableClicked agar drop keluar =====
+-- =========================
+-- Utils
+-- =========================
 local RS = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Remote "klik" yang dipakai client
-local BreakableClicked = RS.Packages
-    and RS.Packages.Knit
-    and RS.Packages.Knit.Services
-    and RS.Packages.Knit.Services.FarmingService
-    and RS.Packages.Knit.Services.FarmingService.RF
-    and RS.Packages.Knit.Services.FarmingService.RF.BreakableClicked
+-- Remote untuk “klik” breakable (agar drop keluar)
+local function getBreakableClickedRemote()
+    local Packages = RS:FindFirstChild("Packages")
+    local Knit = Packages and Packages:FindFirstChild("Knit")
+    local Services = Knit and Knit:FindFirstChild("Services")
+    local FarmingService = Services and Services:FindFirstChild("FarmingService")
+    local RF = FarmingService and FarmingService:FindFirstChild("RF")
+    local Remote = RF and RF:FindFirstChild("BreakableClicked")
+    if not Remote then
+        -- coba tunggu jika belum replicate
+        local ok
+        ok, Remote = pcall(function()
+            local p = RS:WaitForChild("Packages", 5)
+            local k = p and p:WaitForChild("Knit", 5)
+            local s = k and k:WaitForChild("Services", 5)
+            local f = s and s:WaitForChild("FarmingService", 5)
+            local rf = f and f:WaitForChild("RF", 5)
+            return rf and rf:WaitForChild("BreakableClicked", 5)
+        end)
+    end
+    return Remote
+end
 
--- Helper: parse angka zone dari string ("1", "Zone 2", dsb)
+-- Ambil angka zone dari nama "1" / "Zone 2" / dll
 local function toZoneNumber(z)
     if type(z) == "number" then return z end
     local s = tostring(z or "")
@@ -155,162 +177,184 @@ local function toZoneNumber(z)
     return tonumber(num) or 1
 end
 
--- Helper: ambil ID unik breakable (prioritas PosId; fallback ke Name)
+-- Ambil ID unik breakable (prioritas PosId; fallback ke Name hex 32; lalu Name)
 local function getBreakableId(model)
-    local pid = model and model:GetAttribute("PosId")
+    if not model then return nil end
+    local pid = model:GetAttribute("PosId")
     if pid and pid ~= "" then
         return tostring(pid)
     end
-    -- fallback: kalau name 32 hex, itu juga valid
-    if model and model.Name and model.Name:match("^%x+$") and #model.Name == 32 then
+    if model.Name and model.Name:match("^%x+$") and #model.Name == 32 then
         return model.Name
     end
-    return model and model.Name or "UNKNOWN"
+    return model.Name
 end
 
--- Helper: teleport aman ke target model
+-- Teleport aman ke atas target model
 local function tpToModel(model, yOffset)
     yOffset = yOffset or 5
-    local character = LocalPlayer.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if root and model and model.PrimaryPart then
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not (root and model) then return end
+    local pivotCF
+    local ok = pcall(function()
+        pivotCF = model:GetPivot()
+    end)
+    if ok and pivotCF then
+        root.CFrame = pivotCF * CFrame.new(0, yOffset, 0)
+    elseif model.PrimaryPart then
         root.CFrame = model.PrimaryPart.CFrame * CFrame.new(0, yOffset, 0)
+    else
+        local anyPart = model:FindFirstChildWhichIsA("BasePart", true)
+        if anyPart then
+            root.CFrame = anyPart.CFrame * CFrame.new(0, yOffset, 0)
+        end
     end
 end
 
--- ===== Auto Tree =====
+-- =========================
+-- Auto Tree
+-- =========================
 local AutoTreeEnabled = false
 local autoTreeThread = nil
 
--- Ganti callback toggle Auto Tree kamu dengan ini
-AutoTreeToggle:Set(false)
-AutoTreeToggle.Callback = function(Value)
-    AutoTreeEnabled = Value
-    if Value then
-        Rayfield:Notify({
-            Title = "Auto Tree Enabled",
-            Content = "Menggunakan BreakableClicked agar drop keluar",
-            Duration = 5
-        })
-        autoTreeThread = task.spawn(function()
-            local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
-            while AutoTreeEnabled do
-                -- Pakai variabel zona milikmu (tergantung script-mu: selectedTreeZone atau selectedZone)
-                local zoneName = selectedTreeZone or selectedZone or "1"
-                local zoneNum = toZoneNumber(zoneName)
+local AutoTreeToggle = MainTab:CreateToggle({
+    Name = "Auto Tree",
+    CurrentValue = false,
+    Flag = "AutoTreeToggle",
+    Callback = function(Value)
+        AutoTreeEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Auto Tree Enabled",
+                Content = "Menggunakan BreakableClicked agar drop keluar",
+                Duration = 5
+            })
+            autoTreeThread = task.spawn(function()
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
+                while AutoTreeEnabled do
+                    local zoneName = selectedTreeZone or "1"
+                    local zoneNum = toZoneNumber(zoneName)
+                    local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(tostring(zoneName))
+                    local treesFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
+                    local BreakableClicked = getBreakableClickedRemote()
 
-                local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(tostring(zoneName))
-                local treesFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_TREES")
-
-                if BreakableClicked and treesFolder then
-                    for _, tree in ipairs(treesFolder:GetChildren()) do
-                        if not AutoTreeEnabled then break end
-                        if tree:IsA("Model") and tree.PrimaryPart then
-                            tpToModel(tree, 5)
-                            local bid = getBreakableId(tree)
-                            -- Spam "klik" versi server sampai pohon hancur
-                            while AutoTreeEnabled and tree.Parent do
-                                pcall(function()
-                                    BreakableClicked:InvokeServer(zoneNum, tostring(bid))
-                                end)
-                                task.wait(0.08) -- rate klik (ubah sesuai kebutuhan)
+                    if BreakableClicked and treesFolder then
+                        for _, tree in ipairs(treesFolder:GetChildren()) do
+                            if not AutoTreeEnabled then break end
+                            if tree:IsA("Model") then
+                                tpToModel(tree, 5)
+                                local bid = getBreakableId(tree)
+                                if bid then
+                                    while AutoTreeEnabled and tree.Parent do
+                                        pcall(function()
+                                            BreakableClicked:InvokeServer(zoneNum, tostring(bid))
+                                        end)
+                                        task.wait(0.08) -- rate “klik” (tuning sesuai kebutuhan)
+                                    end
+                                end
                             end
                         end
-                    end
-                else
-                    if not BreakableClicked then
-                        Rayfield:Notify({
-                            Title = "Auto Tree Warning",
-                            Content = "Remote BreakableClicked tidak ditemukan.",
-                            Duration = 5
-                        })
                     else
-                        Rayfield:Notify({
-                            Title = "Auto Tree Warning",
-                            Content = "BREAKABLE_TREES tidak ditemukan di zone " .. tostring(zoneName),
-                            Duration = 5
-                        })
+                        if not BreakableClicked then
+                            Rayfield:Notify({
+                                Title = "Auto Tree Warning",
+                                Content = "Remote BreakableClicked tidak ditemukan.",
+                                Duration = 4
+                            })
+                        else
+                            Rayfield:Notify({
+                                Title = "Auto Tree Warning",
+                                Content = "BREAKABLE_TREES tidak ditemukan di zone " .. tostring(zoneName),
+                                Duration = 4
+                            })
+                        end
+                        task.wait(1)
                     end
-                    task.wait(1)
+                    task.wait(0.2)
                 end
-                task.wait(0.2)
-            end
-        end)
-    else
-        Rayfield:Notify({
-            Title = "Auto Tree Disabled",
-            Content = "Auto Tree dimatikan",
-            Duration = 5
-        })
+            end)
+        else
+            Rayfield:Notify({
+                Title = "Auto Tree Disabled",
+                Content = "Auto Tree dimatikan",
+                Duration = 4
+            })
+        end
     end
-end
+})
 
--- ===== Auto Mining =====
+-- =========================
+-- Auto Mining
+-- =========================
 local AutoMiningEnabled = false
 local autoMiningThread = nil
 
--- Ganti callback toggle Auto Mining kamu dengan ini
-AutoMiningToggle:Set(false)
-AutoMiningToggle.Callback = function(Value)
-    AutoMiningEnabled = Value
-    if Value then
-        Rayfield:Notify({
-            Title = "Auto Mining Enabled",
-            Content = "Menggunakan BreakableClicked agar drop keluar",
-            Duration = 5
-        })
-        autoMiningThread = task.spawn(function()
-            local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
-            while AutoMiningEnabled do
-                -- Pakai variabel zona milikmu (tergantung script-mu: selectedTreeZone atau selectedZone)
-                local zoneName = selectedTreeZone or selectedZone or "1"
-                local zoneNum = toZoneNumber(zoneName)
+local AutoMiningToggle = MainTab:CreateToggle({
+    Name = "Auto Mining",
+    CurrentValue = false,
+    Flag = "AutoMiningToggle",
+    Callback = function(Value)
+        AutoMiningEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Auto Mining Enabled",
+                Content = "Menggunakan BreakableClicked agar drop keluar",
+                Duration = 5
+            })
+            autoMiningThread = task.spawn(function()
+                local zonesFolder = workspace.__WORLD and workspace.__WORLD.MAP and workspace.__WORLD.MAP:FindFirstChild("Zones")
+                while AutoMiningEnabled do
+                    local zoneName = selectedTreeZone or "1"
+                    local zoneNum = toZoneNumber(zoneName)
+                    local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(tostring(zoneName))
+                    local oresFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
+                    local BreakableClicked = getBreakableClickedRemote()
 
-                local zoneFolder = zonesFolder and zonesFolder:FindFirstChild(tostring(zoneName))
-                local oresFolder = zoneFolder and zoneFolder.Assets and zoneFolder.Assets:FindFirstChild("BREAKABLE_ORES")
-
-                if BreakableClicked and oresFolder then
-                    for _, ore in ipairs(oresFolder:GetChildren()) do
-                        if not AutoMiningEnabled then break end
-                        if ore:IsA("Model") and ore.PrimaryPart then
-                            tpToModel(ore, 5)
-                            local bid = getBreakableId(ore)
-                            -- Spam "klik" versi server sampai ore hancur
-                            while AutoMiningEnabled and ore.Parent do
-                                pcall(function()
-                                    BreakableClicked:InvokeServer(zoneNum, tostring(bid))
-                                end)
-                                task.wait(0.08) -- rate klik
+                    if BreakableClicked and oresFolder then
+                        for _, ore in ipairs(oresFolder:GetChildren()) do
+                            if not AutoMiningEnabled then break end
+                            if ore:IsA("Model") then
+                                tpToModel(ore, 5)
+                                local bid = getBreakableId(ore)
+                                if bid then
+                                    while AutoMiningEnabled and ore.Parent do
+                                        pcall(function()
+                                            BreakableClicked:InvokeServer(zoneNum, tostring(bid))
+                                        end)
+                                        task.wait(0.08) -- rate “klik”
+                                    end
+                                end
                             end
                         end
-                    end
-                else
-                    if not BreakableClicked then
-                        Rayfield:Notify({
-                            Title = "Auto Mining Warning",
-                            Content = "Remote BreakableClicked tidak ditemukan.",
-                            Duration = 5
-                        })
                     else
-                        Rayfield:Notify({
-                            Title = "Auto Mining Warning",
-                            Content = "BREAKABLE_ORES tidak ditemukan di zone " .. tostring(zoneName),
-                            Duration = 5
-                        })
+                        if not BreakableClicked then
+                            Rayfield:Notify({
+                                Title = "Auto Mining Warning",
+                                Content = "Remote BreakableClicked tidak ditemukan.",
+                                Duration = 4
+                            })
+                        else
+                            Rayfield:Notify({
+                                Title = "Auto Mining Warning",
+                                Content = "BREAKABLE_ORES tidak ditemukan di zone " .. tostring(zoneName),
+                                Duration = 4
+                            })
+                        end
+                        task.wait(1)
                     end
-                    task.wait(1)
+                    task.wait(0.2)
                 end
-                task.wait(0.2)
-            end
-        end)
-    else
-        Rayfield:Notify({
-            Title = "Auto Mining Disabled",
-            Content = "Auto Mining dimatikan",
-            Duration = 5
-        })
+            end)
+        else
+            Rayfield:Notify({
+                Title = "Auto Mining Disabled",
+                Content = "Auto Mining dimatikan",
+                Duration = 4
+            })
+        end
     end
-end
+})
 
 -- =========================
 -- Fish Features
