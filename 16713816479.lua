@@ -8,10 +8,16 @@ if not success then
     return
 end
 
+-- Services global
+local RS = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
 -- Mendapatkan nama game secara otomatis
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
--- Membuat jendela utama dengan judul otomatis
+-- Window
 local Window = Rayfield:CreateWindow({
     Name = gameName,
     Icon = 0,
@@ -42,14 +48,15 @@ local Window = Rayfield:CreateWindow({
     }
 })
 
--- Membuat tab Main
+-- Tab Main
 local MainTab = Window:CreateTab("Main")
 
--- Variabel untuk Auto Claim Gift
+-- =========================
+-- Auto Claim Gift (Single, tidak duplikat)
+-- =========================
 local AutoClaimGiftEnabled = false
 local autoClaimGiftThread = nil
 
--- Toggle untuk Auto Claim Gift
 local AutoClaimGiftToggle = MainTab:CreateToggle({
     Name = "Auto Claim Gift",
     CurrentValue = false,
@@ -66,7 +73,7 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
                 while AutoClaimGiftEnabled do
                     local giftsFolder
                     pcall(function()
-                        giftsFolder = game:GetService("Players").LocalPlayer.PlayerGui.FreeGifts.Frame.Playtime.Gifts
+                        giftsFolder = Players.LocalPlayer.PlayerGui.FreeGifts.Frame.Playtime.Gifts
                     end)
                     if giftsFolder then
                         for _, gift in ipairs(giftsFolder:GetChildren()) do
@@ -74,16 +81,9 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
                             local timerLabel = gift:FindFirstChild("Timer")
                             if timerLabel and timerLabel.Text == "Claim!" then
                                 local ohString1 = gift.Name
-                                local ok, err = pcall(function()
-                                    game:GetService("ReplicatedStorage").Packages.Knit.Services.DataService.RF.ClaimPlaytimeGift:InvokeServer(ohString1)
+                                pcall(function()
+                                    RS.Packages.Knit.Services.DataService.RF.ClaimPlaytimeGift:InvokeServer(ohString1)
                                 end)
-                                if not ok then
-                                    Rayfield:Notify({
-                                        Title = "Auto Claim Gift Error",
-                                        Content = "Failed to claim " .. gift.Name .. ": " .. tostring(err),
-                                        Duration = 5
-                                    })
-                                end
                             end
                         end
                     end
@@ -103,7 +103,7 @@ local AutoClaimGiftToggle = MainTab:CreateToggle({
 -- =========================
 -- Tree & Stone Features
 -- =========================
-local TreeStoneSection = MainTab:CreateSection("Tree & Stone Features")
+MainTab:CreateSection("Tree & Stone Features")
 
 -- Ambil list Zone dari workspace
 local function getTreeZoneList()
@@ -139,14 +139,7 @@ local TreeZoneDropdown = MainTab:CreateDropdown({
     end
 })
 
--- =========================
--- Utils
--- =========================
-local RS = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-
--- Remote untuk “klik” breakable (agar drop keluar)
+-- Utils Tree/Stone
 local function getBreakableClickedRemote()
     local Packages = RS:FindFirstChild("Packages")
     local Knit = Packages and Packages:FindFirstChild("Knit")
@@ -155,7 +148,6 @@ local function getBreakableClickedRemote()
     local RF = FarmingService and FarmingService:FindFirstChild("RF")
     local Remote = RF and RF:FindFirstChild("BreakableClicked")
     if not Remote then
-        -- coba tunggu jika belum replicate
         local ok
         ok, Remote = pcall(function()
             local p = RS:WaitForChild("Packages", 5)
@@ -169,7 +161,6 @@ local function getBreakableClickedRemote()
     return Remote
 end
 
--- Ambil angka zone dari nama "1" / "Zone 2" / dll
 local function toZoneNumber(z)
     if type(z) == "number" then return z end
     local s = tostring(z or "")
@@ -177,7 +168,6 @@ local function toZoneNumber(z)
     return tonumber(num) or 1
 end
 
--- Ambil ID unik breakable (prioritas PosId; fallback ke Name hex 32; lalu Name)
 local function getBreakableId(model)
     if not model then return nil end
     local pid = model:GetAttribute("PosId")
@@ -190,7 +180,6 @@ local function getBreakableId(model)
     return model.Name
 end
 
--- Teleport aman ke atas target model
 local function tpToModel(model, yOffset)
     yOffset = yOffset or 5
     local char = LocalPlayer.Character
@@ -212,9 +201,7 @@ local function tpToModel(model, yOffset)
     end
 end
 
--- =========================
 -- Auto Tree
--- =========================
 local AutoTreeEnabled = false
 local autoTreeThread = nil
 
@@ -250,7 +237,7 @@ local AutoTreeToggle = MainTab:CreateToggle({
                                         pcall(function()
                                             BreakableClicked:InvokeServer(zoneNum, tostring(bid))
                                         end)
-                                        task.wait(0.08) -- rate “klik” (tuning sesuai kebutuhan)
+                                        task.wait(0.08)
                                     end
                                 end
                             end
@@ -284,9 +271,7 @@ local AutoTreeToggle = MainTab:CreateToggle({
     end
 })
 
--- =========================
 -- Auto Mining
--- =========================
 local AutoMiningEnabled = false
 local autoMiningThread = nil
 
@@ -322,7 +307,7 @@ local AutoMiningToggle = MainTab:CreateToggle({
                                         pcall(function()
                                             BreakableClicked:InvokeServer(zoneNum, tostring(bid))
                                         end)
-                                        task.wait(0.08) -- rate “klik”
+                                        task.wait(0.08)
                                     end
                                 end
                             end
@@ -359,11 +344,7 @@ local AutoMiningToggle = MainTab:CreateToggle({
 -- =========================
 -- Fish Features
 -- =========================
-local FishSection = MainTab:CreateSection("Fish Features")
-
-local RS = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
+MainTab:CreateSection("Fish Features")
 
 -- Ambil daftar zone mancing dari ReplicatedStorage.Assets.Fish
 local function getFishZones()
@@ -417,10 +398,9 @@ local FishZoneDropdown = MainTab:CreateDropdown({
     end
 })
 
--- Util: hitung parameter lempar kail di depan player
+-- Hitung parameter lempar kail di depan player
 local function computeCastParamsAheadOfPlayer()
-    local lp = Players.LocalPlayer
-    local char = lp and lp.Character
+    local char = LocalPlayer and LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
 
@@ -428,14 +408,12 @@ local function computeCastParamsAheadOfPlayer()
     local forward = cf.LookVector
     local up = cf.UpVector
 
-    local castDistance = 20 -- jarak lempar ke depan player (ubah sesuai kebutuhan)
+    local castDistance = 20
     local origin = hrp.Position + up * 1.5 + forward * 2
     local p2 = origin + forward * 6 + up * 2.5
     local p3 = origin + forward * 12 + up * 4
-
     local target = origin + forward * castDistance
 
-    -- Raycast ke bawah untuk cari permukaan (air/tanah) di sekitar target
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = {char}
@@ -460,7 +438,6 @@ end
 -- Auto Fish (CastFishingRod only)
 local AutoFishEnabled = false
 local autoFishThread = nil
-
 local ohNumber1 = 0.99
 
 local AutoFishToggle = MainTab:CreateToggle({
@@ -478,7 +455,6 @@ local AutoFishToggle = MainTab:CreateToggle({
             autoFishThread = task.spawn(function()
                 local castFishingRod = getCastRemote()
                 if not castFishingRod then
-                    -- Coba tunggu sebentar kalau belum replicate
                     local ok
                     ok, castFishingRod = pcall(function()
                         local Packages = RS:WaitForChild("Packages", 5)
@@ -505,14 +481,8 @@ local AutoFishToggle = MainTab:CreateToggle({
                         pcall(function()
                             castFishingRod:InvokeServer(ohNumber1, v1, v2, v3, v4, c6, ohNumber7)
                         end)
-                    else
-                        Rayfield:Notify({
-                            Title = "Auto Fish",
-                            Content = "Character/HumanoidRootPart belum siap.",
-                            Duration = 3
-                        })
                     end
-                    task.wait(3) -- jeda biar tidak spam
+                    task.wait(3)
                 end
             end)
         else
@@ -525,7 +495,7 @@ local AutoFishToggle = MainTab:CreateToggle({
     end
 })
 
--- Instant Catch Fish (opsional, masih di Fish Section)
+-- Instant Catch Fish (SINGLE, tidak duplikat)
 local InstantCatchFishEnabled = false
 local instantCatchFishThread = nil
 local InstantCatchFishToggle = MainTab:CreateToggle({
@@ -573,98 +543,14 @@ local InstantCatchFishToggle = MainTab:CreateToggle({
 })
 
 -- =========================
--- Gift / Spin / Hatch
+-- Other Features
 -- =========================
+MainTab:CreateSection("Other Features")
 
--- Auto Claim Gift
-local AutoClaimGiftEnabled = false
-local autoClaimGiftThread = nil
-local AutoClaimGiftToggle = MainTab:CreateToggle({
-    Name = "Auto Claim Gift",
-    CurrentValue = false,
-    Flag = "AutoClaimGiftToggle",
-    Callback = function(Value)
-        AutoClaimGiftEnabled = Value
-        if Value then
-            Rayfield:Notify({
-                Title = "Auto Claim Gift Enabled",
-                Content = "Started auto claiming gifts",
-                Duration = 5
-            })
-            autoClaimGiftThread = task.spawn(function()
-                while AutoClaimGiftEnabled do
-                    local giftsFolder
-                    pcall(function()
-                        giftsFolder = game:GetService("Players").LocalPlayer.PlayerGui.FreeGifts.Frame.Playtime.Gifts
-                    end)
-                    if giftsFolder then
-                        for _, gift in ipairs(giftsFolder:GetChildren()) do
-                            if not AutoClaimGiftEnabled then break end
-                            local timerLabel = gift:FindFirstChild("Timer")
-                            if timerLabel and timerLabel.Text == "Claim!" then
-                                local ohString1 = gift.Name
-                                pcall(function()
-                                    game:GetService("ReplicatedStorage").Packages.Knit.Services.DataService.RF.ClaimPlaytimeGift:InvokeServer(ohString1)
-                                end)
-                            end
-                        end
-                    end
-                    task.wait(1)
-                end
-            end)
-        else
-            Rayfield:Notify({
-                Title = "Auto Claim Gift Disabled",
-                Content = "Auto Claim Gift has been stopped",
-                Duration = 5
-            })
-        end
-    end
-})
-
--- Instant Catch Fish
-local InstantCatchFishEnabled = false
-local instantCatchFishThread = nil
-local InstantCatchFishToggle = MainTab:CreateToggle({
-    Name = "Instant Catch Fish",
-    CurrentValue = false,
-    Flag = "InstantCatchFishToggle",
-    Callback = function(Value)
-        InstantCatchFishEnabled = Value
-        if Value then
-            Rayfield:Notify({
-                Title = "Instant Catch Fish Enabled",
-                Content = "Started instant catching fish",
-                Duration = 5
-            })
-            instantCatchFishThread = task.spawn(function()
-                while InstantCatchFishEnabled do
-                    local ohBoolean1 = true
-                    local ohBoolean2 = true
-                    pcall(function()
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.FarmingService.RF.CatchSequenceFinish:InvokeServer(ohBoolean1, ohBoolean2)
-                    end)
-                    task.wait(0.1)
-                end
-            end)
-        else
-            Rayfield:Notify({
-                Title = "Instant Catch Fish Disabled",
-                Content = "Instant Catch Fish has been stopped",
-                Duration = 5
-            })
-        end
-    end
-})
-
--- Membuat section Other
-local OtherSection = MainTab:CreateSection("Other Features")
-
--- Variabel untuk Auto Spin
+-- Auto Spin
 local AutoSpinEnabled = false
 local autoSpinThread = nil
 
--- Toggle untuk Auto Spin
 local AutoSpinToggle = MainTab:CreateToggle({
     Name = "Auto Spin",
     CurrentValue = false,
@@ -680,7 +566,7 @@ local AutoSpinToggle = MainTab:CreateToggle({
             autoSpinThread = task.spawn(function()
                 while AutoSpinEnabled do
                     pcall(function()
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.DataService.RF.StartWheelSpin:InvokeServer()
+                        RS.Packages.Knit.Services.DataService.RF.StartWheelSpin:InvokeServer()
                     end)
                     task.wait(1)
                 end
@@ -695,10 +581,11 @@ local AutoSpinToggle = MainTab:CreateToggle({
     end
 })
 
--- Membuat tab Hatch
+-- =========================
+-- Tab Hatch
+-- =========================
 local HatchTab = Window:CreateTab("Hatch")
 
--- Fungsi untuk mendapatkan list eggs
 local function getEggList()
     local eggList = {}
     local eggsFolder = workspace.Scripted and workspace.Scripted:FindFirstChild("Eggs")
@@ -713,7 +600,6 @@ end
 local eggList = getEggList()
 local selectedEgg = eggList[1] or "Basic Egg"
 
--- Dropdown untuk Egg
 local EggDropdown = HatchTab:CreateDropdown({
     Name = "Select Egg",
     Options = eggList,
@@ -729,7 +615,6 @@ local EggDropdown = HatchTab:CreateDropdown({
     end
 })
 
--- Button Refresh Egg List
 local RefreshEggButton = HatchTab:CreateButton({
     Name = "Refresh Egg List",
     Callback = function()
@@ -744,7 +629,6 @@ local RefreshEggButton = HatchTab:CreateButton({
     end
 })
 
--- Dropdown untuk How Many
 local howManyList = {"One", "Multi"}
 local selectedHowMany = howManyList[1]
 local HowManyDropdown = HatchTab:CreateDropdown({
@@ -762,11 +646,9 @@ local HowManyDropdown = HatchTab:CreateDropdown({
     end
 })
 
--- Variabel untuk Auto Hatch
 local AutoHatchEnabled = false
 local autoHatchThread = nil
 
--- Toggle untuk Auto Hatch
 local AutoHatchToggle = HatchTab:CreateToggle({
     Name = "Auto Hatch",
     CurrentValue = false,
@@ -779,8 +661,7 @@ local AutoHatchToggle = HatchTab:CreateToggle({
                 Content = "Started auto hatching eggs",
                 Duration = 5
             })
-            -- Teleport player sekali ke egg yang dipilih
-            local player = game:GetService("Players").LocalPlayer
+            local player = Players.LocalPlayer
             local eggsFolder = workspace.Scripted and workspace.Scripted:FindFirstChild("Eggs")
             local eggModel = eggsFolder and eggsFolder:FindFirstChild(selectedEgg)
             if eggModel and eggModel.PrimaryPart then
@@ -796,7 +677,6 @@ local AutoHatchToggle = HatchTab:CreateToggle({
                     Duration = 5
                 })
             end
-            -- Mulai loop auto hatch tanpa teleport berulang
             autoHatchThread = task.spawn(function()
                 while AutoHatchEnabled do
                     local eggsFolderNow = workspace.Scripted and workspace.Scripted:FindFirstChild("Eggs")
@@ -804,10 +684,10 @@ local AutoHatchToggle = HatchTab:CreateToggle({
                         local ohString1 = selectedEgg
                         local ohString2 = selectedHowMany
                         pcall(function()
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.InventoryService.RF.HatchEgg:InvokeServer(ohString1, ohString2)
+                            RS.Packages.Knit.Services.InventoryService.RF.HatchEgg:InvokeServer(ohString1, ohString2)
                         end)
                         pcall(function()
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.InventoryService.RF.OnHatchFinish:InvokeServer()
+                            RS.Packages.Knit.Services.InventoryService.RF.OnHatchFinish:InvokeServer()
                         end)
                     else
                         Rayfield:Notify({
@@ -829,11 +709,11 @@ local AutoHatchToggle = HatchTab:CreateToggle({
     end
 })
 
--- Membuat tab Setting
+-- =========================
+-- Tab Setting
+-- =========================
 local SettingTab = Window:CreateTab("Setting")
-
--- Membuat section General Settings
-local GeneralSettingsSection = SettingTab:CreateSection("General Settings")
+SettingTab:CreateSection("General Settings")
 
 -- Anti AFK
 local AutoAntiAFKEnabled = true
@@ -859,9 +739,8 @@ local AutoAntiAFKToggle = SettingTab:CreateToggle({
     end
 })
 
--- Aktifkan Anti AFK
 local vu = game:GetService("VirtualUser")
-game:GetService("Players").LocalPlayer.Idled:Connect(function()
+Players.LocalPlayer.Idled:Connect(function()
     if AutoAntiAFKEnabled then
         vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
         task.wait(1)
@@ -885,7 +764,7 @@ local AutoRejoinToggle = SettingTab:CreateToggle({
             })
             task.spawn(function()
                 while AutoRejoinEnabled do
-                    local player = game:GetService("Players").LocalPlayer
+                    local player = Players.LocalPlayer
                     local ok, isAlive = pcall(function()
                         return player.Character and player.Character.Parent ~= nil
                     end)
@@ -920,17 +799,15 @@ local AutoRejoinToggle = SettingTab:CreateToggle({
     end
 })
 
--- Membuat section Player
-local PlayerSection = SettingTab:CreateSection("Player")
+-- Player section
+SettingTab:CreateSection("Player")
 
--- Variabel untuk Speed
 local customSpeed = 50
 local defaultPlayerSpeed = 16
 local defaultPetSpeed = 16
 local AutoSpeedEnabled = false
 local autoSpeedThread = nil
 
--- Input untuk Speed
 local SpeedInput = SettingTab:CreateInput({
     Name = "Speed",
     PlaceholderText = "Enter speed value",
@@ -946,14 +823,13 @@ local SpeedInput = SettingTab:CreateInput({
     end
 })
 
--- Toggle untuk Activate Speed
 local ActivateSpeedToggle = SettingTab:CreateToggle({
     Name = "Activate Speed",
     CurrentValue = false,
     Flag = "ActivateSpeedToggle",
     Callback = function(Value)
         AutoSpeedEnabled = Value
-        local player = game:GetService("Players").LocalPlayer
+        local player = Players.LocalPlayer
         local activePetsFolder = workspace:FindFirstChild("ActivePets")
         local playerPetFolderName = tostring(player.UserId)
       
