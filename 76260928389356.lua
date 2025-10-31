@@ -1,11 +1,52 @@
--- ========== ANTI-BYPASS (PASTE DI ATAS SEMUA KODE!) ==========
--- (COPY FULL BLOCK `validateAccess()` dari test.lua di atas)
--- ...
+-- ========== **ANTI-BYPASS BLOCK** (PASTE **PIHAK ATAS** AnimeApexScript.lua & **SEMUA MAIN SCRIPT**) ==========
+-- **PENJELASAN**: 
+-- 1. **CEK KEY FILE** `INDHubKey` ada?
+-- 2. **MATCH USERID** = Akun pembeli key
+-- 3. **ANTI-TAMPER** Hash signature cocok?
+-- ❌ **GAGAL** → **KICK** + Pesan
+-- ✅ **OK** → Jalankan script
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local currentUserId = LocalPlayer.UserId
+local FileName = "INDHubKey"  -- **SAMA** dgn KeySystem
+
+local function simpleHash(str)
+    local hash = 0
+    for i = 1, #str do
+        hash = (hash * 31 + string.byte(str, i)) % 2^32
+    end
+    return hash
+end
+
+local function validateAccess()
+    if not isfile(FileName) then return false end
+    local savedContent = readfile(FileName)
+    local dataSuccess, savedData = pcall(function()
+        return HttpService:JSONDecode(savedContent)
+    end)
+    if not dataSuccess then return false end
+    local savedKey = savedData.key
+    local savedUserId = savedData.userId
+    local savedSignature = savedData.signature
+    if savedUserId ~= currentUserId then return false end
+    local combined = savedKey .. tostring(savedUserId)
+    return savedSignature == simpleHash(combined)
+end
+
 if not validateAccess() then
-    LocalPlayer:Kick("🚫 DIRECT ACCESS BLOCKED! Use KeySystem.lua")
+    LocalPlayer:Kick([[
+🚫 **ACCESS DENIED!** 🚫
+
+❌ **No valid key!**
+✅ **Execute KeySystem.lua first!**
+
+💰 **Buy Key**: https://socialunlocks.com/u/pet-evolution-incremental-key
+    ]])
     return
 end
--- ==============================================================
+-- ====================================================================================================
 
 -- Memuat library Rayfield dengan error handling
 local Rayfield
